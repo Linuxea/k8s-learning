@@ -1,0 +1,22 @@
+# kind 集群配置 — 3 节点（1 control-plane + 2 worker）
+# 文档：https://kind.sigs.k8s.io/docs/user/configuration/
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  # 控制面节点：运行 apiserver、etcd、scheduler、controller-manager
+  - role: control-plane
+    # 端口映射：将容器内的 80/443 映射到宿主机
+    # 这样通过 Lightsail 公网 IP 就能访问 Ingress
+    extraPortMappings:
+      - containerPort: 80
+        hostPort: 80
+        protocol: TCP
+      - containerPort: 443
+        hostPort: 443
+        protocol: TCP
+
+  # 工作节点：跑应用 Pod
+  - role: worker
+
+  # 第二个工作节点：可练习多节点调度、污点/容忍等
+  - role: worker
