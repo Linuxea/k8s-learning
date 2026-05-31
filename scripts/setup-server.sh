@@ -15,6 +15,8 @@
 
 set -euo pipefail
 
+export DEBIAN_FRONTEND=noninteractive
+
 CLUSTER_NAME="k8s-learning"
 KIND_VERSION="v0.24.0"
 K8S_VERSION="v1.31.0"
@@ -41,7 +43,21 @@ else
     sudo systemctl enable docker
     sudo systemctl start docker
     sudo usermod -aG docker ubuntu
-    echo "  ✅ Docker 安装完成"
+
+    # 配置 Docker 镜像加速器（国内必须，否则无法拉取 docker.io 镜像）
+    sudo mkdir -p /etc/docker
+    sudo tee /etc/docker/daemon.json << 'MIRROREOF'
+{
+  "registry-mirrors": [
+    "https://docker.1ms.run",
+    "https://docker.xuanyuan.me"
+  ]
+}
+MIRROREOF
+    sudo systemctl daemon-reload
+    sudo systemctl restart docker
+
+    echo "  ✅ Docker 安装完成（含镜像加速器）"
     echo "  ⚠️  需要重新登录 SSH 让 docker 组权限生效"
     echo "  正在通过 newgrp 刷新组权限..."
     sg docker -c "echo '  docker 组权限已刷新'"
@@ -79,7 +95,7 @@ echo ">>> [5/7] 创建 kind 集群..."
 if kind get clusters 2>/dev/null | grep -q "${CLUSTER_NAME}"; then
     echo "  集群 ${CLUSTER_NAME} 已存在，跳过创建"
 else
-    # 写入集群配置文件
+    # 写入集群配置文件（含 containerd 镜像加速，解决国内 registry.k8s.io 无法访问的问题）
     cat > ~/kind-cluster.yaml << 'KINDEOF'
 # kind 集群配置 — 3 节点（1 control-plane + 2 worker）
 kind: Cluster
@@ -95,14 +111,22 @@ nodes:
         protocol: TCP
   - role: worker
   - role: worker
+# 国内网络必须配置：加速 registry.k8s.io 和 docker.io 镜像拉取
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."registry.k8s.io"]
+      endpoint = ["https://k8s.m.daocloud.io"]
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
+      endpoint = ["https://docker.1ms.run"]
 KINDEOF
 
     echo "  正在创建集群（需要几分钟拉取镜像）..."
-    kind create cluster \
-        --name "${CLUSTER_NAME}" \
-        --image "kindest/node:${K8S_VERSION}" \
+    # 使用 sg docker 确保当前 SSH session 有 docker 组权限
+    sg docker -c "kind create cluster \
+        --name '${CLUSTER_NAME}' \
+        --image 'kindest/node:${K8S_VERSION}' \
         --config ~/kind-cluster.yaml \
-        --wait 300s
+        --wait 300s"
     echo "  ✅ 集群创建完成"
 fi
 

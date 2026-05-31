@@ -20,3 +20,12 @@ nodes:
 
   # 第二个工作节点：可练习多节点调度、污点/容忍等
   - role: worker
+
+# 国内网络必须配置：加速 registry.k8s.io 和 docker.io 镜像拉取
+# 否则 Ingress Controller 等addon无法启动
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."registry.k8s.io"]
+      endpoint = ["https://k8s.m.daocloud.io"]
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
+      endpoint = ["https://docker.1ms.run"]

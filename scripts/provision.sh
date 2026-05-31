@@ -17,7 +17,7 @@ set -euo pipefail
 
 # ---------- 配置 ----------
 REGION="ap-guangzhou"
-ZONE="ap-guangzhou-3"
+ZONE="ap-guangzhou-6"
 INSTANCE_NAME="k8s-learning"
 INSTANCE_TYPE="S5.MEDIUM4"        # 2 vCPU / 4GB RAM
 SYSTEM_DISK_SIZE=50
