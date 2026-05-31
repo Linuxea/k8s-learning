@@ -58,9 +58,7 @@ MIRROREOF
     sudo systemctl restart docker
 
     echo "  ✅ Docker 安装完成（含镜像加速器）"
-    echo "  ⚠️  需要重新登录 SSH 让 docker 组权限生效"
-    echo "  正在通过 newgrp 刷新组权限..."
-    sg docker -c "echo '  docker 组权限已刷新'"
+    echo "  ⚠️  docker 组权限需要重新登录才生效，后续命令使用 sudo 绕过"
 fi
 
 # ---------- 3. 安装 kind ----------
@@ -96,6 +94,7 @@ if kind get clusters 2>/dev/null | grep -q "${CLUSTER_NAME}"; then
     echo "  集群 ${CLUSTER_NAME} 已存在，跳过创建"
 else
     # 写入集群配置文件（含 containerd 镜像加速，解决国内 registry.k8s.io 无法访问的问题）
+    # 注意：6443 端口映射 + listenAddress "0.0.0.0" 是让本地 kubectl 远程连接的关键
     cat > ~/kind-cluster.yaml << 'KINDEOF'
 # kind 集群配置 — 3 节点（1 control-plane + 2 worker）
 kind: Cluster
@@ -109,6 +108,10 @@ nodes:
       - containerPort: 443
         hostPort: 443
         protocol: TCP
+      - containerPort: 6443
+        hostPort: 6443
+        protocol: TCP
+        listenAddress: "0.0.0.0"
   - role: worker
   - role: worker
 # 国内网络必须配置：加速 registry.k8s.io 和 docker.io 镜像拉取
@@ -121,18 +124,28 @@ containerdConfigPatches:
 KINDEOF
 
     echo "  正在创建集群（需要几分钟拉取镜像）..."
-    # 使用 sg docker 确保当前 SSH session 有 docker 组权限
-    sg docker -c "kind create cluster \
+    # 使用 sudo 运行 kind，避免 SSH session 中 docker 组权限未生效的问题
+    sudo kind create cluster \
         --name '${CLUSTER_NAME}' \
         --image 'kindest/node:${K8S_VERSION}' \
         --config ~/kind-cluster.yaml \
-        --wait 300s"
+        --wait 300s
     echo "  ✅ 集群创建完成"
+
+    # sudo kind 把 kubeconfig 写入 /root/.kube/config，需要复制到 ubuntu 用户
+    # 并把 server 地址从 0.0.0.0 改为 127.0.0.1（证书 SAN 只有 127.0.0.1）
+    sudo mkdir -p /home/ubuntu/.kube
+    sudo cp /root/.kube/config /home/ubuntu/.kube/config
+    sudo sed -i 's|https://0.0.0.0:6443|https://127.0.0.1:6443|g' /home/ubuntu/.kube/config
+    sudo chown -R ubuntu:ubuntu /home/ubuntu/.kube
 fi
 
 # ---------- 6. 验证集群 ----------
 echo ""
 echo ">>> [6/7] 验证集群..."
+# sudo kind 生成的 kubeconfig 在 /root 下，需要用 sudo kubectl 或指定 kubeconfig
+# 这里先把 KUBECONFIG 指向 ubuntu 用户的副本（上面已从 /root 复制过来）
+export KUBECONFIG=/home/ubuntu/.kube/config
 kubectl get nodes
 echo ""
 

@@ -222,6 +222,84 @@ cmd_create() {
         sleep 10
     done
 
+    # ---------- 绑定 SSH 密钥 ----------
+    # RunInstances 创建的竞价实例可能没有自动绑定密钥（安全组/密钥查询失败时会跳过）
+    # 需要停机 → 绑定 → 开机
+    if [[ -n "${key_id}" && "${key_id}" != "None" ]]; then
+        echo ""
+        echo ">>> 绑定 SSH 密钥..."
+        # 先停机
+        tccli cvm StopInstances --region "${REGION}" --InstanceIds "[\"${instance_id}\"]" &>/dev/null
+        for i in $(seq 1 20); do
+            local st
+            st=$(get_instance_status)
+            if [[ "${st}" == "STOPPED" ]]; then break; fi
+            sleep 5
+        done
+        # 绑定密钥
+        tccli cvm AssociateInstancesKeyPairs --region "${REGION}" \
+            --InstanceIds "[\"${instance_id}\"]" \
+            --KeyIds "[\"${key_id}\"]" &>/dev/null
+        sleep 3
+        # 开机
+        tccli cvm StartInstances --region "${REGION}" --InstanceIds "[\"${instance_id}\"]" &>/dev/null
+        for i in $(seq 1 20); do
+            local st
+            st=$(get_instance_status)
+            if [[ "${st}" == "RUNNING" ]]; then
+                echo "  ✅ SSH 密钥已绑定"
+                break
+            fi
+            sleep 5
+        done
+    fi
+
+    # ---------- 配置安全组 ----------
+    # 如果没有指定安全组（查询失败），尝试查找或创建一个并配置入站规则
+    if [[ -z "${sg_id}" || "${sg_id}" == "None" ]]; then
+        echo ""
+        echo ">>> 配置安全组..."
+        # 查找是否有名为 k8s-learning 的安全组
+        local sg_raw2
+        sg_raw2=$(tccli vpc DescribeSecurityGroups --region "${REGION}" \
+            --Filters '[{"Name":"group-name","Values":["k8s-learning"]}]' \
+            2>/dev/null || echo "{}")
+        sg_id=$(extract_json "$sg_raw2" "d['SecurityGroupSet'][0]['SecurityGroupId']")
+
+        if [[ -z "${sg_id}" || "${sg_id}" == "None" ]]; then
+            # 创建新安全组
+            local sg_create
+            sg_create=$(tccli vpc CreateSecurityGroup --region "${REGION}" \
+                --GroupName "k8s-learning" \
+                --GroupDescription "K8s learning environment" \
+                2>/dev/null || echo "{}")
+            sg_id=$(extract_json "$sg_create" "d['SecurityGroupId']")
+        fi
+
+        if [[ -n "${sg_id}" && "${sg_id}" != "None" ]]; then
+            echo "  安全组: ${sg_id}"
+            # 绑定到实例
+            tccli cvm AssociateSecurityGroups --region "${REGION}" \
+                --InstanceIds "[\"${instance_id}\"]" \
+                --SecurityGroupIds "[\"${sg_id}\"]" &>/dev/null
+            # 添加入站规则（SSH / HTTP / HTTPS / K8s API / NodePort）
+            tccli vpc CreateSecurityGroupPolicies --region "${REGION}" \
+                --SecurityGroupId "${sg_id}" \
+                --SecurityGroupPolicySet '{
+                    "Ingress": [
+                        {"Protocol":"TCP","Port":"22","CidrBlock":"0.0.0.0/0","Action":"ACCEPT","PolicyDescription":"SSH"},
+                        {"Protocol":"TCP","Port":"80","CidrBlock":"0.0.0.0/0","Action":"ACCEPT","PolicyDescription":"HTTP"},
+                        {"Protocol":"TCP","Port":"443","CidrBlock":"0.0.0.0/0","Action":"ACCEPT","PolicyDescription":"HTTPS"},
+                        {"Protocol":"TCP","Port":"6443","CidrBlock":"0.0.0.0/0","Action":"ACCEPT","PolicyDescription":"K8s API Server"},
+                        {"Protocol":"TCP","Port":"30000-32767","CidrBlock":"0.0.0.0/0","Action":"ACCEPT","PolicyDescription":"NodePort"}
+                    ]
+                }' &>/dev/null
+            echo "  ✅ 安全组规则已配置（22, 80, 443, 6443, 30000-32767）"
+        else
+            echo "  ⚠️  安全组创建失败，请手动在控制台配置"
+        fi
+    fi
+
     local public_ip
     public_ip=$(get_instance_ip)
 
@@ -234,12 +312,11 @@ cmd_create() {
     echo "========================================="
     echo ""
     echo "下一步:"
-    echo "  1. 确保安全组已放行: 22, 80, 443"
-    echo "  2. 在服务器上搭建集群:"
-    echo "     ssh ubuntu@${public_ip} 'bash -s' < scripts/setup-server.sh"
+    echo "  1. 在服务器上搭建集群:"
+    echo "     ssh -i ~/.ssh/id_rsa ubuntu@${public_ip} 'bash -s' < scripts/setup-server.sh"
     echo ""
-    echo "  3. 本地连接集群:"
-    echo "     ./scripts/setup-local.sh ${public_ip} <SSH密钥路径>"
+    echo "  2. 本地连接集群:"
+    echo "     ./scripts/setup-local.sh ${public_ip} ~/.ssh/id_rsa"
     echo ""
     echo "销毁实例:"
     echo "  tccli cvm TerminateInstances --region ${REGION} --InstanceIds '[\"<实例ID>\"]'"

@@ -151,6 +151,7 @@ tccli cvm DescribeInstances --region ap-guangzhou \
 | 22 | TCP | 0.0.0.0/0 | SSH 登录 |
 | 80 | TCP | 0.0.0.0/0 | HTTP (Ingress) |
 | 443 | TCP | 0.0.0.0/0 | HTTPS (Ingress) |
+| 6443 | TCP | 0.0.0.0/0 | K8s API Server（本地 kubectl 远程连接） |
 | 30000-32767 | TCP | 0.0.0.0/0 | NodePort 范围 |
 
 > 也可以用 tccli 操作安全组，但控制台操作更直观。安全组只需配置一次，后续重建实例可以复用同一个安全组。
@@ -330,14 +331,21 @@ apiVersion: kind.x-k8s.io/v1alpha4
 nodes:
   # 控制面节点：运行 K8s 的核心组件
   - role: control-plane
-    # 把容器的 80/443 端口映射到宿主机，让 Ingress 可以从外部访问
+    # 把容器的端口映射到宿主机，让外部可以访问
     extraPortMappings:
+      # Ingress 流量
       - containerPort: 80
         hostPort: 80
         protocol: TCP
       - containerPort: 443
         hostPort: 443
         protocol: TCP
+      # K8s API Server：本地 kubectl 远程连接需要此端口
+      # listenAddress 必须设为 "0.0.0.0"，否则默认只绑 127.0.0.1，外部访问不到
+      - containerPort: 6443
+        hostPort: 6443
+        protocol: TCP
+        listenAddress: "0.0.0.0"
 
   # 工作节点：跑你的应用 Pod
   - role: worker
@@ -364,8 +372,8 @@ EOF
 
 ```bash
 # 创建集群（需要几分钟，主要时间花在拉取镜像上）
-# 注意：如果通过 SSH 管道执行，需要用 sg docker 包裹（见下方"一键操作"章节）
-kind create cluster --name k8s-learning --config ~/kind-cluster.yaml
+# 注意：如果通过 SSH 管道执行，建议用 sudo kind 避免 docker 组权限问题
+sudo kind create cluster --name k8s-learning --config ~/kind-cluster.yaml
 
 # 输出类似：
 # Creating cluster "k8s-learning" ...
@@ -378,6 +386,12 @@ kind create cluster --name k8s-learning --config ~/kind-cluster.yaml
 # ✓ Joining worker nodes 🚜
 # Set kubectl context to "kind-k8s-learning"
 # Cluster creation complete!
+
+# 注意：sudo kind 把 kubeconfig 写入 /root/.kube/config
+# 如果需要用 ubuntu 用户执行 kubectl，需要复制过来：
+sudo mkdir -p /home/ubuntu/.kube
+sudo cp /root/.kube/config /home/ubuntu/.kube/config
+sudo chown -R ubuntu:ubuntu /home/ubuntu/.kube
 ```
 
 ### 6.3 理解 kind 做了什么
@@ -486,67 +500,52 @@ kubectl delete -f ~/verify-cluster.yaml
 这一步让你能在**自己电脑上**直接用 kubectl 操作远程 CVM 上的集群，
 这是更贴近真实工作场景的方式。
 
-> **重要**：kind 的 API Server 端口默认绑定到 `127.0.0.1`（仅本机可访问），
-> 所以**不能直接从本机连公网 IP 访问**。有两种方案：
->
-> - **方案 A：SSH 隧道（推荐）**：安全、无需改安全组，本地体验最丝滑
-> - **方案 B：端口转发 + 安全组**：需要开放 API Server 端口
+> **前提**：Step 6 的 kind-cluster.yaml 必须包含 6443 端口映射 + `listenAddress: "0.0.0.0"`，
+> 并且安全组已放行 6443 端口。否则本地 kubectl 连不上。
 
-### 8.1 在 CVM 上导出 kubeconfig
+### 8.1 从 CVM 获取 kubeconfig
 
 ```bash
-# SSH 到 CVM 上执行（需要 sg docker 确保有 docker 组权限）
-ssh -i ~/.ssh/id_rsa ubuntu@<CVM公网IP>
-sg docker -c "kind get kubeconfig --name k8s-learning" > ~/k8s-learning-kubeconfig.yaml
+# 从远程服务器获取 kubeconfig（sudo kind 的 kubeconfig 在 /root 下）
+# 替换 <CVM公网IP> 为你的实际 IP
+ssh -i ~/.ssh/id_rsa ubuntu@<CVM公网IP> \
+    "sudo kind get kubeconfig --name k8s-learning" \
+    > ~/.kube/k8s-learning-config
 ```
 
-### 8.2 下载到本机
+### 8.2 替换 server 地址为公网 IP
+
+kind 生成的 kubeconfig 里 server 地址是 `127.0.0.1:6443` 或 `0.0.0.0:6443`，
+需要改成 CVM 的公网 IP 才能从本机访问：
 
 ```bash
-# 在本机执行
-scp -i ~/.ssh/id_rsa ubuntu@<CVM公网IP>:~/k8s-learning-kubeconfig.yaml ~/.kube/k8s-learning-config
-```
+# 替换 IP 地址
+sed -i 's/127\.0\.0\.1/<CVM公网IP>/g' ~/.kube/k8s-learning-config
+sed -i 's/0\.0\.0\.0/<CVM公网IP>/g' ~/.kube/k8s-learning-config
 
-### 8.3 连接集群 — 方案 A：SSH 隧道（推荐）
-
-SSH 隧道把远程的 API Server 端口映射到本机 localhost，kubeconfig 保持 `127.0.0.1` 不用改：
-
-```bash
-# 查看 kubeconfig 中的 API Server 端口
+# 确认 server 地址已改
 grep 'server:' ~/.kube/k8s-learning-config | head -1
-# 输出类似：server: https://127.0.0.1:46493
-# 记住这个端口号（如 46493）
+# 应该输出：server: https://<CVM公网IP>:6443
+```
 
-# 建立 SSH 隧道（-f 后台运行，-N 不执行远程命令）
-# 将本机的 localhost:PORT 转发到 CVM 的 localhost:PORT
-ssh -f -N -L 46493:127.0.0.1:46493 -i ~/.ssh/id_rsa ubuntu@<CVM公网IP>
+### 8.3 跳过 TLS 证书校验
 
-# 测试连接
+kind 生成的 API Server 证书只包含内部 IP（127.0.0.1、172.x.x.x），
+不包含你的公网 IP，所以 kubectl 会报 TLS 错误。
+需要设置 `insecure-skip-tls-verify` 跳过证书校验：
+
+> 学习环境可以这样做。生产环境绝不能跳过证书校验。
+
+```bash
+KUBECONFIG=~/.kube/k8s-learning-config kubectl config set-cluster kind-k8s-learning --insecure-skip-tls-verify=true
+```
+
+### 8.4 验证连接
+
+```bash
 KUBECONFIG=~/.kube/k8s-learning-config kubectl get nodes
 # 应该能看到 3 个节点
 ```
-
-> SSH 隧道断开后（如网络中断、电脑休眠），需要重新建立。
-> 可以写个 alias 简化：`alias k8s-tunnel='ssh -f -N -L 46493:127.0.0.1:46493 -i ~/.ssh/id_rsa ubuntu@<IP>'`
-
-### 8.4 连接集群 — 方案 B：公网直连
-
-把 kubeconfig 里的 `127.0.0.1` 改成 CVM 公网 IP，并在安全组放行对应端口：
-
-```bash
-# 修改 kubeconfig
-sed -i 's/127\.0\.0\.1/<CVM公网IP>/g' ~/.kube/k8s-learning-config
-
-# 查看需要放行的端口（如 46493）
-grep 'server:' ~/.kube/k8s-learning-config
-
-# 在腾讯云安全组中添加入站规则：TCP <端口> 0.0.0.0/0
-
-# 测试连接
-KUBECONFIG=~/.kube/k8s-learning-config kubectl get nodes
-```
-
-> 方案 B 的风险：API Server 端口暴露在公网。学习环境问题不大，但生产环境绝对不要这样做。
 
 ### 8.5 日常使用
 
@@ -595,30 +594,29 @@ kubectl get pods -n ingress-nginx
 
 ## 一键操作（用脚本）
 
-上面的 Step 3-9 已经封装成脚本，可以一键执行：
+上面的 Step 1-9 已经封装成脚本，可以一键执行：
 
 ```bash
-# Step 1: 创建 CVM（用 tccli 或控制台）
+# Step 1: 创建 CVM + 自动绑定 SSH 密钥 + 配置安全组
 ./scripts/provision.sh create --yes
 
 # Step 2: 在 CVM 上搭建集群（通过 SSH 管道执行）
-# 注意：脚本已包含 DEBIAN_FRONTEND=noninteractive，不会卡在交互提示
+# 脚本会自动安装 Docker/kind/kubectl + 创建集群 + 安装 Ingress
 ssh -i ~/.ssh/id_rsa ubuntu@<公网IP> 'bash -s' < scripts/setup-server.sh
 
-# Step 3: 本地连接集群（SSH 隧道方式）
-# 先获取 API Server 端口
-ssh -i ~/.ssh/id_rsa ubuntu@<公网IP> 'sg docker -c "kind get kubeconfig --name k8s-learning"' \
-  > ~/.kube/k8s-learning-config
-PORT=$(grep 'server:' ~/.kube/k8s-learning-config | head -1 | sed 's|.*:||')
-ssh -f -N -L ${PORT}:127.0.0.1:${PORT} -i ~/.ssh/id_rsa ubuntu@<公网IP>
-KUBECONFIG=~/.kube/k8s-learning-config kubectl get nodes
+# Step 3: 本地连接集群（自动获取 kubeconfig + 替换 IP + 跳过 TLS 校验）
+./scripts/setup-local.sh <公网IP> ~/.ssh/id_rsa
 ```
 
 > 脚本已经处理了以下坑：
+> - 自动绑定 SSH 密钥（停机 → 绑定 → 开机）
+> - 自动创建/配置安全组（22, 80, 443, 6443, 30000-32767）
 > - `DEBIAN_FRONTEND=noninteractive` 避免 apt 交互提示卡住
 > - Docker 镜像加速器配置（国内网络必须）
 > - kind containerd 镜像加速（国内网络必须）
-> - `sg docker` 包裹 kind 命令解决 SSH session 组权限问题
+> - `sudo kind` 解决 SSH session 中 docker 组权限不生效的问题
+> - kind-cluster.yaml 中 6443 端口 `listenAddress: "0.0.0.0"` 让外部可访问 API Server
+> - `insecure-skip-tls-verify` 解决 kind 证书不包含公网 IP 的问题
 
 ---
 
@@ -686,16 +684,17 @@ sudo reboot
 
 ### 问题：kind create cluster 报 permission denied (docker socket)
 
-这是最常见的坑：通过 SSH 执行时，当前 session 没有 docker 组权限。
+通过 SSH 执行时，当前 session 没有 docker 组权限（`usermod -aG docker` 需要重新登录才生效）。
 
 ```bash
-# 方法一：用 sg docker 包裹 kind 命令
-sg docker -c "kind create cluster --name k8s-learning --config ~/kind-cluster.yaml"
+# 解决：使用 sudo 运行 kind
+sudo kind create cluster --name k8s-learning --config ~/kind-cluster.yaml
 
-# 方法二：退出 SSH 重新登录（usermod -aG docker 后需要重新登录才生效）
-exit
-ssh -i ~/.ssh/id_rsa ubuntu@<IP>
-kind create cluster ...
+# 注意：sudo kind 会把 kubeconfig 写入 /root/.kube/config
+# 需要复制到 ubuntu 用户：
+sudo mkdir -p /home/ubuntu/.kube
+sudo cp /root/.kube/config /home/ubuntu/.kube/config
+sudo chown -R ubuntu:ubuntu /home/ubuntu/.kube
 ```
 
 ### 问题：kind create cluster 卡在 pull image / 报 i/o timeout
@@ -750,16 +749,20 @@ kubectl describe node <node-name>
 ### 问题：本地 kubectl 连不上远程集群
 
 ```bash
-# 1. kind 的 API Server 端口绑定在 127.0.0.1，不能直接从外部访问
-#    确认端口绑定：
-ssh ubuntu@<IP> 'sg docker -c "docker ps --format {{.Ports}}"'
-# 如果看到 127.0.0.1:PORT->6443/tcp，说明只绑定了本机
+# 1. 检查安全组是否放行了 6443 端口
+#    在腾讯云控制台 → 安全组 → 入站规则 查看
 
-# 2. 推荐方案：SSH 隧道（见 Step 8.3）
-#    将远程 localhost:PORT 映射到本地
-ssh -f -N -L <PORT>:127.0.0.1:<PORT> -i ~/.ssh/id_rsa ubuntu@<IP>
+# 2. 检查 kind 端口绑定（在 CVM 上执行）
+ssh ubuntu@<IP> 'sudo ss -tlnp | grep 6443'
+# 应该看到 0.0.0.0:6443，如果是 127.0.0.1:6443 说明 kind-cluster.yaml 没有 listenAddress
 
-# 3. 替代方案：公网直连需在安全组放行端口（见 Step 8.4）
+# 3. 检查 kubeconfig 中的 server 地址
+grep 'server:' ~/.kube/k8s-learning-config
+# 应该是 https://<公网IP>:6443
+
+# 4. 如果报 TLS/certificate 错误（x509: certificate is valid for ... not <IP>）
+#    说明没有设置 insecure-skip-tls-verify：
+KUBECONFIG=~/.kube/k8s-learning-config kubectl config set-cluster kind-k8s-learning --insecure-skip-tls-verify=true
 ```
 
 ### 问题：SSH 管道执行 apt 卡在交互提示

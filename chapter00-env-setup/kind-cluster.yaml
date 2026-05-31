@@ -5,15 +5,21 @@ apiVersion: kind.x-k8s.io/v1alpha4
 nodes:
   # 控制面节点：运行 apiserver、etcd、scheduler、controller-manager
   - role: control-plane
-    # 端口映射：将容器内的 80/443 映射到宿主机
-    # 这样通过 CVM 公网 IP 就能访问 Ingress
+    # 端口映射：将容器内的端口映射到宿主机，让外部可以访问
     extraPortMappings:
+      # Ingress 流量：通过 CVM 公网 IP 访问 HTTP/HTTPS
       - containerPort: 80
         hostPort: 80
         protocol: TCP
       - containerPort: 443
         hostPort: 443
         protocol: TCP
+      # K8s API Server：本地 kubectl 远程连接集群需要此端口
+      # listenAddress 必须设为 "0.0.0.0"，否则默认只绑 127.0.0.1，外部访问不到
+      - containerPort: 6443
+        hostPort: 6443
+        protocol: TCP
+        listenAddress: "0.0.0.0"
 
   # 工作节点：跑应用 Pod
   - role: worker

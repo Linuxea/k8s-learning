@@ -26,8 +26,11 @@ echo ""
 echo ">>> [1/3] 从服务器获取 kubeconfig..."
 mkdir -p "$HOME/.kube"
 
+# sudo kind 创建的集群，kubeconfig 在 /root/.kube/config
+# 需要用 sudo kind get kubeconfig 或直接读 /root/.kube/config
+# 这里用 sudo kind get kubeconfig 获取（会把 127.0.0.1 替换为实际绑定地址）
 ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=accept-new ubuntu@"${PUBLIC_IP}" \
-    "kind get kubeconfig --name ${CLUSTER_NAME}" \
+    "sudo kind get kubeconfig --name ${CLUSTER_NAME}" \
     > "${KUBECONFIG_FILE}"
 
 echo "  ✅ kubeconfig 已下载到 ${KUBECONFIG_FILE}"
@@ -36,12 +39,18 @@ echo "  ✅ kubeconfig 已下载到 ${KUBECONFIG_FILE}"
 echo ""
 echo ">>> [2/3] 替换 server 地址为公网 IP..."
 
-# kind 的 kubeconfig 里 server 地址是 127.0.0.1:PORT
-# 需要改成 CVM 公网 IP:PORT 才能从本机访问
+# kind 的 kubeconfig 里 server 地址可能是 0.0.0.0:6443 或 127.0.0.1:6443
+# 需要改成 CVM 公网 IP 才能从本机访问
 sed -i "s/127\.0\.0\.1/${PUBLIC_IP}/g" "${KUBECONFIG_FILE}"
+sed -i "s/0\.0\.0\.0/${PUBLIC_IP}/g" "${KUBECONFIG_FILE}"
 
 SERVER=$(grep 'server:' "${KUBECONFIG_FILE}" | head -1 | awk '{print $2}')
 echo "  Server 地址: ${SERVER}"
+
+# kind 生成的 API Server 证书 SAN 里只有 127.0.0.1 和内部 IP，没有公网 IP
+# 所以必须跳过 TLS 证书校验（学习环境可以接受，生产环境不要这样做）
+KUBECONFIG="${KUBECONFIG_FILE}" kubectl config set-cluster "kind-${CLUSTER_NAME}" --insecure-skip-tls-verify=true 2>/dev/null
+echo "  ✅ 已设置 insecure-skip-tls-verify（因为 kind 证书不包含公网 IP）"
 
 # 提取端口，提示用户确认防火墙
 PORT=$(echo "${SERVER}" | sed 's|.*:||')
