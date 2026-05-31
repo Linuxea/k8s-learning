@@ -27,25 +27,31 @@ BANDWIDTH=10                      # 公网带宽上限 (Mbps)
 
 # ---------- 辅助函数 ----------
 
+# tccli 不支持 --query/--output text（那是 AWS CLI 的语法），用 python3 解析 JSON
+# 用法: extract_json '<json>' '<python expr>'，如 extract_json "$raw" "d['InstanceSet'][0]['InstanceId']"
+extract_json() {
+    python3 -c "import sys,json; d=json.loads('''$1'''); print($2)" 2>/dev/null || echo ""
+}
+
 get_instance_id() {
-    tccli cvm DescribeInstances --region "${REGION}" \
-        --Filters '[{"Name":"instance-name","Values":["'"${INSTANCE_NAME}"'"]}]' \
-        --query 'InstanceSet[0].InstanceId' \
-        --output text 2>/dev/null
+    local raw
+    raw=$(tccli cvm DescribeInstances --region "${REGION}" \
+        --Filters '[{"Name":"instance-name","Values":["'"${INSTANCE_NAME}"'"]}]' 2>/dev/null || echo "{}")
+    extract_json "$raw" "d['InstanceSet'][0]['InstanceId]"
 }
 
 get_instance_ip() {
-    tccli cvm DescribeInstances --region "${REGION}" \
-        --Filters '[{"Name":"instance-name","Values":["'"${INSTANCE_NAME}"'"]}]' \
-        --query 'InstanceSet[0].PublicIpAddresses[0]' \
-        --output text 2>/dev/null
+    local raw
+    raw=$(tccli cvm DescribeInstances --region "${REGION}" \
+        --Filters '[{"Name":"instance-name","Values":["'"${INSTANCE_NAME}"'"]}]' 2>/dev/null || echo "{}")
+    extract_json "$raw" "d['InstanceSet'][0]['PublicIpAddresses'][0]"
 }
 
 get_instance_status() {
-    tccli cvm DescribeInstances --region "${REGION}" \
-        --Filters '[{"Name":"instance-name","Values":["'"${INSTANCE_NAME}"'"]}]' \
-        --query 'InstanceSet[0].InstanceState' \
-        --output text 2>/dev/null
+    local raw
+    raw=$(tccli cvm DescribeInstances --region "${REGION}" \
+        --Filters '[{"Name":"instance-name","Values":["'"${INSTANCE_NAME}"'"]}]' 2>/dev/null || echo "{}")
+    extract_json "$raw" "d['InstanceSet'][0]['InstanceState']"
 }
 
 # ---------- 子命令: info ----------
@@ -113,10 +119,11 @@ cmd_create() {
     echo ""
     echo ">>> 查询 Ubuntu 24.04 镜像..."
     local image_id
-    image_id=$(tccli cvm DescribeImages --region "${REGION}" \
+    local img_raw
+    img_raw=$(tccli cvm DescribeImages --region "${REGION}" \
         --Filters '[{"Name":"image-name","Values":["Ubuntu 24.04"]},{"Name":"image-type","Values":["PUBLIC_IMAGE"]}]' \
-        --query 'ImageSet[0].ImageId' \
-        --output text 2>/dev/null)
+        2>/dev/null || echo "{}")
+    image_id=$(extract_json "$img_raw" "d['ImageSet'][0]['ImageId']")
 
     if [[ -z "${image_id}" || "${image_id}" == "None" ]]; then
         echo "❌ 未找到 Ubuntu 24.04 镜像，请手动指定 --ImageId"
@@ -129,10 +136,11 @@ cmd_create() {
     # 查询默认安全组
     echo ">>> 查询安全组..."
     local sg_id
-    sg_id=$(tccli vpc DescribeSecurityGroups --region "${REGION}" \
+    local sg_raw
+    sg_raw=$(tccli vpc DescribeSecurityGroups --region "${REGION}" \
         --Filters '[{"Name":"is-default","Values":["true"]}]' \
-        --query 'SecurityGroupSet[0].SecurityGroupId' \
-        --output text 2>/dev/null)
+        2>/dev/null || echo "{}")
+    sg_id=$(extract_json "$sg_raw" "d['SecurityGroupSet'][0]['SecurityGroupId']")
 
     if [[ -n "${sg_id}" && "${sg_id}" != "None" ]]; then
         echo "  默认安全组: ${sg_id}"
@@ -144,9 +152,10 @@ cmd_create() {
     # 查询 SSH 密钥
     echo ">>> 查询 SSH 密钥..."
     local key_id
-    key_id=$(tccli cvm DescribeKeyPairs --region "${REGION}" \
-        --query 'KeySet[0].KeyId' \
-        --output text 2>/dev/null)
+    local key_raw
+    key_raw=$(tccli cvm DescribeKeyPairs --region "${REGION}" \
+        2>/dev/null || echo "{}")
+    key_id=$(extract_json "$key_raw" "d['KeySet'][0]['KeyId']")
 
     if [[ -n "${key_id}" && "${key_id}" != "None" ]]; then
         echo "  SSH 密钥: ${key_id}"

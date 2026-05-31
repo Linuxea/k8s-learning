@@ -74,21 +74,55 @@ tccli cvm DescribeRegions
 
 > 密钥获取：登录 [腾讯云控制台](https://console.cloud.tencent.com/) → 右上角 → 访问管理 → API 密钥管理 → 新建密钥
 
-### 1.3 用 tccli 创建竞价实例
+### 1.3 导入 SSH 公钥到腾讯云
+
+如果你本地的 SSH 公钥还没有上传到腾讯云，需要先导入，否则创建的实例你连不上：
 
 ```bash
-# 查看广州可用区
-tccli cvm DescribeZones --region ap-guangzhou
+# 查看本地已有的公钥（选一个你常用的）
+cat ~/.ssh/id_rsa.pub
+
+# 导入到腾讯云（密钥名称只能用字母数字下划线）
+tccli cvm ImportKeyPair \
+  --region ap-guangzhou \
+  --KeyName k8s_learning \
+  --ProjectId 0 \
+  --PublicKey "$(cat ~/.ssh/id_rsa.pub)"
+
+# 记下返回的 KeyId（如 skey-xxx），后面创建实例时要用
+```
+
+> 如果腾讯云已有你本地对应的密钥对，可跳过这步。用 `tccli cvm DescribeKeyPairs --region ap-guangzhou` 查看。
+
+### 1.4 用 tccli 创建竞价实例
+
+> **注意**：tccli 不支持 AWS CLI 的 `--query` / `--output text` 参数，输出只有 JSON 格式。
+> 需要从 JSON 中提取字段时，配合 `python3 -c` 或 `jq` 使用。
+
+```bash
+# 查看广州可用区（目前只有 5/6/7 区可用）
+tccli cvm DescribeZones --region ap-guangzhou | python3 -c "
+import sys,json
+for z in json.load(sys.stdin)['ZoneSet']:
+    print(f\"{z['Zone']:20} {z['ZoneState']:10} {z.get('ZoneName','')}\")
+"
 
 # 查询 Ubuntu 24.04 镜像 ID
 tccli cvm DescribeImages --region ap-guangzhou \
-  --Filters '[{"Name":"image-name","Values":["ubuntu 24"]}]'
+  --Filters '[{"Name":"image-name","Values":["Ubuntu 24.04"]},{"Name":"image-type","Values":["PUBLIC_IMAGE"]}]' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['ImageSet'][0]['ImageId'])"
 
-# 创建竞价实例
+# 查询默认安全组 ID
+tccli vpc DescribeSecurityGroups --region ap-guangzhou \
+  --Filters '[{"Name":"is-default","Values":["true"]}]' \
+  | python3 -c "import sys,json; sgs=json.load(sys.stdin)['SecurityGroupSet']; print(sgs[0]['SecurityGroupId'] if sgs else 'NONE')"
+
+# 创建竞价实例（注意 Zone 用 ap-guangzhou-6，S5.MEDIUM4 在 6 区有库存）
 tccli cvm RunInstances \
+  --region ap-guangzhou \
   --InstanceChargeType SPOTPAID \
   --InstanceMarketOptions '{"MarketType":"spot","SpotOptions":{"MaxPrice":"0.5","SpotInstanceType":"one-time"}}' \
-  --Placement '{"Zone":"ap-guangzhou-3"}' \
+  --Placement '{"Zone":"ap-guangzhou-6"}' \
   --InstanceType S5.MEDIUM4 \
   --ImageId <镜像ID> \
   --SystemDisk '{"DiskType":"CLOUD_SSD","DiskSize":50}' \
@@ -97,11 +131,17 @@ tccli cvm RunInstances \
   --SecurityGroupIds '["<安全组ID>"]' \
   --InstanceName k8s-learning \
   --HostName k8s-learning
+
+# 等待实例 running 后查看公网 IP
+tccli cvm DescribeInstances --region ap-guangzhou \
+  --Filters '[{"Name":"instance-name","Values":["k8s-learning"]}]' \
+  | python3 -c "import sys,json; ins=json.load(sys.stdin)['InstanceSet']; print(f'IP: {ins[0][\"PublicIpAddresses\"][0]}') if ins else print('NOT FOUND')"
 ```
 
 > 也可以直接在 [腾讯云 CVM 控制台](https://console.cloud.tencent.com/cvm) 页面手动购买竞价实例，更直观。
+> 控制台购买时记得选择你的 SSH 密钥，否则只能用密码登录。
 
-### 1.4 配置安全组（防火墙）
+### 1.5 配置安全组（防火墙）
 
 在腾讯云控制台 → 安全组，添加以下入站规则：
 
@@ -174,11 +214,24 @@ sudo systemctl start docker
 # 把当前用户加入 docker 组，免 sudo
 sudo usermod -aG docker ubuntu
 
+# 配置 Docker 镜像加速器（国内网络必须，否则拉取 docker.io 镜像超时）
+sudo mkdir -p /etc/docker
+sudo tee /etc/docker/daemon.json << 'EOF'
+{
+  "registry-mirrors": [
+    "https://docker.1ms.run",
+    "https://docker.xuanyuan.me"
+  ]
+}
+EOF
+sudo systemctl daemon-reload
+sudo systemctl restart docker
+
 # 验证安装
 docker --version
 # Docker version 27.x.x, build xxxxxxx
 
-# 使组权限生效（需要重新登录）
+# 使组权限生效（需要重新登录，或在当前 session 用 sg 刷新）
 exit
 ```
 
@@ -189,6 +242,10 @@ exit
 docker run --rm hello-world
 # 看到Hello from Docker!就说明OK
 ```
+
+> **为什么需要镜像加速器？** 国内网络访问 docker.io（Docker Hub）经常超时或极慢。
+> 配置 `registry-mirrors` 后，Docker 会自动从镜像站拉取，速度大幅提升。
+> 如果你的网络能直连 Docker Hub，可以跳过 `daemon.json` 配置。
 
 ### 为什么是 Docker 而不是 containerd？
 
@@ -286,13 +343,27 @@ nodes:
 
   # 第二个工作节点：可以练习多节点调度
   - role: worker
+
+# 国内网络必须配置：kind 节点内的 containerd 需要拉取 registry.k8s.io 的镜像
+# （如 Ingress Controller、CoreDNS 等），不配置会导致 ImagePullBackOff
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."registry.k8s.io"]
+      endpoint = ["https://k8s.m.daocloud.io"]
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
+      endpoint = ["https://docker.1ms.run"]
 EOF
 ```
+
+> **关键**：`containerdConfigPatches` 是国内环境的"必选项"。
+> kind 集群内每个节点跑的是 containerd（不是 Docker），它拉镜像走的不是上面配的 Docker mirror。
+> 这个配置让集群内 containerd 也走镜像加速，否则 Ingress Controller 等组件会因 `registry.k8s.io` 超时而无法启动。
 
 ### 6.2 创建集群
 
 ```bash
 # 创建集群（需要几分钟，主要时间花在拉取镜像上）
+# 注意：如果通过 SSH 管道执行，需要用 sg docker 包裹（见下方"一键操作"章节）
 kind create cluster --name k8s-learning --config ~/kind-cluster.yaml
 
 # 输出类似：
@@ -414,35 +485,72 @@ kubectl delete -f ~/verify-cluster.yaml
 这一步让你能在**自己电脑上**直接用 kubectl 操作远程 CVM 上的集群，
 这是更贴近真实工作场景的方式。
 
+> **重要**：kind 的 API Server 端口默认绑定到 `127.0.0.1`（仅本机可访问），
+> 所以**不能直接从本机连公网 IP 访问**。有两种方案：
+>
+> - **方案 A：SSH 隧道（推荐）**：安全、无需改安全组，本地体验最丝滑
+> - **方案 B：端口转发 + 安全组**：需要开放 API Server 端口
+
 ### 8.1 在 CVM 上导出 kubeconfig
 
 ```bash
-# SSH 到 CVM 上执行
-kind get kubeconfig --name k8s-learning > ~/k8s-learning-kubeconfig.yaml
+# SSH 到 CVM 上执行（需要 sg docker 确保有 docker 组权限）
+ssh -i ~/.ssh/id_rsa ubuntu@<CVM公网IP>
+sg docker -c "kind get kubeconfig --name k8s-learning" > ~/k8s-learning-kubeconfig.yaml
 ```
 
 ### 8.2 下载到本机
 
 ```bash
-# 在本机执行（不是在 CVM 上）
-scp -i <你的密钥.pem> ubuntu@<CVM公网IP>:~/k8s-learning-kubeconfig.yaml ~/.kube/k8s-learning-config
+# 在本机执行
+scp -i ~/.ssh/id_rsa ubuntu@<CVM公网IP>:~/k8s-learning-kubeconfig.yaml ~/.kube/k8s-learning-config
 ```
 
-### 8.3 修改 server 地址
+### 8.3 连接集群 — 方案 A：SSH 隧道（推荐）
 
-kubeconfig 里的 server 地址默认是 `127.0.0.1`，需要改成 CVM 的公网 IP：
+SSH 隧道把远程的 API Server 端口映射到本机 localhost，kubeconfig 保持 `127.0.0.1` 不用改：
 
 ```bash
-# 在本机修改
-sed -i 's/127\.0\.0\.1/<你的CVM公网IP>/g' ~/.kube/k8s-learning-config
+# 查看 kubeconfig 中的 API Server 端口
+grep 'server:' ~/.kube/k8s-learning-config | head -1
+# 输出类似：server: https://127.0.0.1:46493
+# 记住这个端口号（如 46493）
+
+# 建立 SSH 隧道（-f 后台运行，-N 不执行远程命令）
+# 将本机的 localhost:PORT 转发到 CVM 的 localhost:PORT
+ssh -f -N -L 46493:127.0.0.1:46493 -i ~/.ssh/id_rsa ubuntu@<CVM公网IP>
+
+# 测试连接
+KUBECONFIG=~/.kube/k8s-learning-config kubectl get nodes
+# 应该能看到 3 个节点
 ```
 
-或者手动编辑 `~/.kube/k8s-learning-config`，把 `server: https://127.0.0.1:XXXXX` 改成 `server: https://<CVM公网IP>:XXXXX`。
+> SSH 隧道断开后（如网络中断、电脑休眠），需要重新建立。
+> 可以写个 alias 简化：`alias k8s-tunnel='ssh -f -N -L 46493:127.0.0.1:46493 -i ~/.ssh/id_rsa ubuntu@<IP>'`
 
-### 8.4 使用
+### 8.4 连接集群 — 方案 B：公网直连
+
+把 kubeconfig 里的 `127.0.0.1` 改成 CVM 公网 IP，并在安全组放行对应端口：
 
 ```bash
-# 方式一：设置环境变量
+# 修改 kubeconfig
+sed -i 's/127\.0\.0\.1/<CVM公网IP>/g' ~/.kube/k8s-learning-config
+
+# 查看需要放行的端口（如 46493）
+grep 'server:' ~/.kube/k8s-learning-config
+
+# 在腾讯云安全组中添加入站规则：TCP <端口> 0.0.0.0/0
+
+# 测试连接
+KUBECONFIG=~/.kube/k8s-learning-config kubectl get nodes
+```
+
+> 方案 B 的风险：API Server 端口暴露在公网。学习环境问题不大，但生产环境绝对不要这样做。
+
+### 8.5 日常使用
+
+```bash
+# 方式一：设置环境变量（推荐，加到 ~/.bashrc 里）
 export KUBECONFIG=~/.kube/k8s-learning-config
 kubectl get nodes
 
@@ -450,22 +558,9 @@ kubectl get nodes
 kubectl --kubeconfig ~/.kube/k8s-learning-config get nodes
 
 # 方式三：合并到默认 kubeconfig
-# 如果你已经有其他集群的配置，可以合并：
 KUBECONFIG=~/.kube/config:~/.kube/k8s-learning-config kubectl config view --flatten > ~/.kube/config.tmp
 mv ~/.kube/config.tmp ~/.kube/config
 ```
-
-### 8.5 验证
-
-```bash
-kubectl get nodes
-# 应该能看到 3 个节点，和 SSH 到 CVM 上看到的一样
-```
-
-> 如果连不上，检查：
-> 1. 腾讯云安全组是否放行了 kubeconfig 中的端口（通常是 6443 或随机高端口）
-> 2. kubeconfig 中的 IP 是否正确
-> 3. 用 `curl -k https://<IP>:<PORT>/livez` 测试 API 是否可达
 
 ---
 
@@ -503,14 +598,26 @@ kubectl get pods -n ingress-nginx
 
 ```bash
 # Step 1: 创建 CVM（用 tccli 或控制台）
-./scripts/provision.sh
+./scripts/provision.sh create --yes
 
-# Step 2: 在 CVM 上搭建集群（通过 SSH 管道）
-ssh ubuntu@<公网IP> 'bash -s' < scripts/setup-server.sh
+# Step 2: 在 CVM 上搭建集群（通过 SSH 管道执行）
+# 注意：脚本已包含 DEBIAN_FRONTEND=noninteractive，不会卡在交互提示
+ssh -i ~/.ssh/id_rsa ubuntu@<公网IP> 'bash -s' < scripts/setup-server.sh
 
-# Step 3: 本地连接集群
-./scripts/setup-local.sh <公网IP> <SSH密钥路径>
+# Step 3: 本地连接集群（SSH 隧道方式）
+# 先获取 API Server 端口
+ssh -i ~/.ssh/id_rsa ubuntu@<公网IP> 'sg docker -c "kind get kubeconfig --name k8s-learning"' \
+  > ~/.kube/k8s-learning-config
+PORT=$(grep 'server:' ~/.kube/k8s-learning-config | head -1 | sed 's|.*:||')
+ssh -f -N -L ${PORT}:127.0.0.1:${PORT} -i ~/.ssh/id_rsa ubuntu@<公网IP>
+KUBECONFIG=~/.kube/k8s-learning-config kubectl get nodes
 ```
+
+> 脚本已经处理了以下坑：
+> - `DEBIAN_FRONTEND=noninteractive` 避免 apt 交互提示卡住
+> - Docker 镜像加速器配置（国内网络必须）
+> - kind containerd 镜像加速（国内网络必须）
+> - `sg docker` 包裹 kind 命令解决 SSH session 组权限问题
 
 ---
 
@@ -576,21 +683,54 @@ sudo reboot
 
 ## 故障排查
 
-### 问题：kind create cluster 卡在 pull image
+### 问题：kind create cluster 报 permission denied (docker socket)
+
+这是最常见的坑：通过 SSH 执行时，当前 session 没有 docker 组权限。
 
 ```bash
-# 查看 Docker 拉取进度
-docker pull kindest/node:v1.31.0
+# 方法一：用 sg docker 包裹 kind 命令
+sg docker -c "kind create cluster --name k8s-learning --config ~/kind-cluster.yaml"
 
-# 如果网络不通，可以配置 Docker 代理
-sudo mkdir -p /etc/systemd/system/docker.service.d
-cat <<EOF | sudo tee /etc/systemd/system/docker.service.d/proxy.conf
-[Service]
-Environment="HTTP_PROXY=http://your-proxy:port"
-Environment="HTTPS_PROXY=http://your-proxy:port"
+# 方法二：退出 SSH 重新登录（usermod -aG docker 后需要重新登录才生效）
+exit
+ssh -i ~/.ssh/id_rsa ubuntu@<IP>
+kind create cluster ...
+```
+
+### 问题：kind create cluster 卡在 pull image / 报 i/o timeout
+
+国内网络拉取 docker.io 镜像超时。需要配置 Docker 镜像加速器：
+
+```bash
+# 确认 /etc/docker/daemon.json 已配置
+cat /etc/docker/daemon.json
+# 应该包含 registry-mirrors
+
+# 如果没有，手动配置：
+sudo tee /etc/docker/daemon.json << 'EOF'
+{
+  "registry-mirrors": [
+    "https://docker.1ms.run",
+    "https://docker.xuanyuan.me"
+  ]
+}
 EOF
 sudo systemctl daemon-reload
 sudo systemctl restart docker
+```
+
+### 问题：Ingress Controller Pod 报 ImagePullBackOff
+
+集群内 containerd 拉取 `registry.k8s.io` 镜像失败（Docker 镜像加速器不管这个）。
+
+```bash
+# 查看 Pod 事件，确认是 registry.k8s.io 超时
+kubectl describe pod -n ingress-nginx <pod-name> | grep -A5 Events
+
+# 解决：kind-cluster.yaml 必须包含 containerdConfigPatches（见 Step 6.1）
+# 如果已经创建了集群没配，需要删除重建：
+kind delete cluster --name k8s-learning
+# 用包含 containerdConfigPatches 的配置重新创建
 ```
 
 ### 问题：kubectl get nodes 显示 NotReady
@@ -609,16 +749,26 @@ kubectl describe node <node-name>
 ### 问题：本地 kubectl 连不上远程集群
 
 ```bash
-# 1. 检查网络连通性
-curl -k https://<IP>:<PORT>/livez
+# 1. kind 的 API Server 端口绑定在 127.0.0.1，不能直接从外部访问
+#    确认端口绑定：
+ssh ubuntu@<IP> 'sg docker -c "docker ps --format {{.Ports}}"'
+# 如果看到 127.0.0.1:PORT->6443/tcp，说明只绑定了本机
 
-# 2. 检查 kubeconfig 里的 IP 和端口
-cat ~/.kube/k8s-learning-config | grep server
+# 2. 推荐方案：SSH 隧道（见 Step 8.3）
+#    将远程 localhost:PORT 映射到本地
+ssh -f -N -L <PORT>:127.0.0.1:<PORT> -i ~/.ssh/id_rsa ubuntu@<IP>
 
-# 3. 检查腾讯云安全组
-# 在腾讯云控制台 → 安全组 → 确认对应端口已放行
+# 3. 替代方案：公网直连需在安全组放行端口（见 Step 8.4）
+```
 
-# 4. 如果端口是随机高端口（如 38xyz），必须在安全组里手动添加
+### 问题：SSH 管道执行 apt 卡在交互提示
+
+```bash
+# 如 ssh ... 'bash -s' < setup-server.sh 时卡在 sshd_config 配置选择
+# 解决：脚本开头必须加
+export DEBIAN_FRONTEND=noninteractive
+
+# 当前 setup-server.sh 已包含此配置
 ```
 
 ### 问题：内存不足，Pod 一直 Pending
