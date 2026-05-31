@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dynamic-pvc
+spec:
+  # 注意：这次没有手动创建 PV！
+  # PVC 引用 StorageClass 后，provisioner 会自动创建 PV
+
+  resources:
+    requests:
+      storage: 256Mi   # 请求 256MB
+
+  accessModes:
+    - ReadWriteOnce
+
+  # 指定使用 fast-local StorageClass
+  storageClassName: fast-local

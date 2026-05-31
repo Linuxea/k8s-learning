@@ -1,0 +1,54 @@
+# ============================================================
+# ClusterIP Service 示例：Deployment + Service
+# ============================================================
+
+---
+# Deployment: 2 个 nginx Pod，带标签 app=nginx-clusterip
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-clusterip
+  # Deployment 自己的标签，方便管理
+  labels:
+    app: nginx-clusterip
+spec:
+  replicas: 2
+  # selector 指定如何匹配要管理的 Pod
+  # 必须和下面的 template.metadata.labels 匹配
+  selector:
+    matchLabels:
+      app: nginx-clusterip
+  template:
+    metadata:
+      labels:
+        # 这个标签是关键——Service 通过它找到这些 Pod
+        app: nginx-clusterip
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27
+          ports:
+            # 声明容器监听端口，文档性质
+            - containerPort: 80
+
+---
+# Service: ClusterIP 类型（默认）
+# 为上面的 Pod 提供一个稳定的虚拟 IP 和 DNS 名称
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-clusterip-svc
+spec:
+  # type: ClusterIP 是默认值，可以省略
+  # 只在集群内部可达，外部无法直接访问
+  type: ClusterIP
+  # selector 和 Pod 的 labels 匹配，Service 才能找到这些 Pod
+  selector:
+    app: nginx-clusterip
+  ports:
+    - protocol: TCP
+      # port: Service 自身监听的端口（集群内其他 Pod 访问用的端口）
+      port: 80
+      # targetPort: Pod 上容器监听的端口（与 containerPort 对应）
+      # 可以写数字，也可以写容器上定义的端口名
+      targetPort: 80

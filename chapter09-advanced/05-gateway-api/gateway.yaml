@@ -1,0 +1,43 @@
+# Gateway: 定义一个网关实例
+# Gateway 是基础设施级别的资源，由集群运维人员管理
+# 它声明了："我需要一个网关，监听这些端口，接受这些协议"
+# 类比：Gateway 就像一台物理负载均衡器，定义了监听器（listener）
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: example-gateway
+  namespace: gateway-demo
+  labels:
+    chapter: "09"
+spec:
+  # 引用上一步定义的 GatewayClass
+  # 这决定了哪个 Controller 来管理这个 Gateway
+  gatewayClassName: example-gateway-class
+  # listeners 定义网关监听的端口和协议
+  # 一个 Gateway 可以有多个 listener，每个监听不同的端口/协议
+  listeners:
+    - name: http
+      # 协议类型：HTTP、HTTPS、TLS、TCP、UDP
+      protocol: HTTP
+      # 监听端口
+      port: 80
+      # allowedRoutes 限制哪些 Route 可以绑定到这个 listener
+      # 这是一个安全特性：防止任意 Route 劫持网关流量
+      allowedRoutes:
+        namespaces:
+          # Same = 只允许同一命名空间的 Route
+          # All = 允许所有命名空间的 Route
+          # Selector = 通过 label selector 选择命名空间
+          from: Same
+    # 可以添加更多 listener，例如 HTTPS
+    # - name: https
+    #   protocol: HTTPS
+    #   port: 443
+    #   tls:
+    #     mode: Terminate
+    #     certificateRefs:
+    #       - name: example-tls
+    #         namespace: gateway-demo
+    #   allowedRoutes:
+    #     namespaces:
+    #       from: Same

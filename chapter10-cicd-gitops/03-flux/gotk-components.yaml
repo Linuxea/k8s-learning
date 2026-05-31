@@ -1,0 +1,63 @@
+# Flux 组件参考：gotk-components.yaml
+# 这个文件解释 Flux 的各组件，不需要直接 apply
+# Flux 通过 `flux install` 或 `flux bootstrap` 自动安装所有组件
+
+# ============================================================
+# Flux 安装后在集群中创建的资源
+# ============================================================
+#
+# 命名空间：flux-system
+#
+# Deployments（控制器）：
+# ┌──────────────────────────────┬──────────────────────────────────────┐
+# │ 组件名称                      │ 功能                                  │
+# ├──────────────────────────────┼──────────────────────────────────────┤
+# │ source-controller            │ 管理 Git/Helm/Bucket 源的拉取和缓存    │
+# │ kustomize-controller         │ 使用 Kustomize 构建清单并应用到集群    │
+# │ helm-controller              │ 管理 Helm Release 的生命周期          │
+# │ notification-controller      │ 处理事件通知和 Webhook                │
+# │ image-reflector-controller   │ 扫描镜像仓库获取最新标签              │
+# │ image-automation-controller  │ 自动更新 Git 中的镜像引用             │
+# └──────────────────────────────┴──────────────────────────────────────┘
+#
+# CRD（自定义资源定义）：
+# ┌──────────────────────┬────────────────────────────────────┐
+# │ CRD 名称              │ 用途                               │
+# ├──────────────────────┼────────────────────────────────────┤
+# │ GitRepository         │ 定义 Git 仓库源                    │
+# │ OCIRepository         │ 定义 OCI 仓库源（容器镜像仓库）     │
+# │ HelmRepository        │ 定义 Helm Chart 仓库               │
+# │ HelmChart             │ 定义具体的 Helm Chart              │
+# │ Bucket                │ 定义对象存储源（S3 等）             │
+# │ Kustomization         │ 定义 Kustomize 构建和部署           │
+# │ HelmRelease           │ 定义 Helm Release 部署             │
+# │ ImageRepository       │ 定义要扫描的镜像仓库               │
+# │ ImagePolicy           │ 定义镜像标签选择策略               │
+# │ ImageUpdateAutomation │ 定义自动更新 Git 的规则            │
+# │ Alert                 │ 定义告警规则                       │
+# │ Provider              │ 定义通知提供商（Slack、Webhook 等） │
+# │ Receiver              │ 定义 Webhook 接收器（触发同步）     │
+# └──────────────────────┴────────────────────────────────────┘
+#
+# RBAC：
+# Flux 自动创建 ServiceAccount 和 RBAC 规则
+# 默认拥有 flux-system 命名空间的管理权限
+# 其他命名空间需要通过 --namespace 或 RBAC 授权
+
+# ============================================================
+# 查看已安装的组件
+# ============================================================
+# kubectl get deployments -n flux-system
+# kubectl get crds | grep fluxcd
+# kubectl get sa -n flux-system
+
+# ============================================================
+# 升级 Flux
+# ============================================================
+# 方式一（如果使用 bootstrap）：
+#   flux bootstrap github --owner=... --repository=... [同初始参数]
+#   重新运行 bootstrap 命令即可升级
+#
+# 方式二（如果使用 flux install）：
+#   flux install --version=v2.x.x
+#   指定新版本号重新安装

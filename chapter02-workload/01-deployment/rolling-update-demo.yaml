@@ -1,0 +1,54 @@
+# rolling-update-demo.yaml
+# 自定义滚动更新策略：零停机配置
+# maxSurge: 1 + maxUnavailable: 0 = 始终先建新 Pod，等就绪再删旧的
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-rolling-demo
+  labels:
+    app: nginx-rolling
+    chapter: "02"
+spec:
+  replicas: 3
+
+  selector:
+    matchLabels:
+      app: nginx-rolling
+
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # 最多只能多出 1 个 Pod
+      # 对于 3 副本：最多 4 个 Pod 同时存在
+      maxSurge: 1
+      # 不允许任何 Pod 不可用
+      # 这保证了更新过程中始终有 3 个可用 Pod
+      # 但前提是集群有足够资源多运行 1 个 Pod
+      maxUnavailable: 0
+
+  template:
+    metadata:
+      labels:
+        app: nginx-rolling
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27
+          ports:
+            - containerPort: 80
+          # 就绪探针：只有通过检查的 Pod 才会被 Service 转发流量
+          # 这是零停机的关键 — 新 Pod 通过就绪检查后，旧 Pod 才会被删除
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi

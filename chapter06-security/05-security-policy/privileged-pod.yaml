@@ -1,0 +1,16 @@
+# 违反 restricted 安全标准的 Pod
+# 这个 Pod 会违反多项 restricted 要求：
+# 1. 以 root 运行（没有设置 runAsNonRoot 和 runAsUser）
+# 2. 允许特权提升（没有设置 allowPrivilegeEscalation: false）
+# 3. 没有丢弃 capabilities（没有 drop: ["ALL"]）
+# 在 enforce: restricted 的命名空间中会被拒绝创建
+apiVersion: v1
+kind: Pod
+metadata:
+  name: privileged-pod
+spec:
+  containers:
+    - name: nginx
+      image: nginx
+      ports:
+        - containerPort: 80

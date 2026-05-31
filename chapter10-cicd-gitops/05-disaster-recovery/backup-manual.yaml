@@ -1,0 +1,64 @@
+# Velero Backup CR：按需手动备份
+# 在重要操作（部署、升级、迁移）前创建手动备份
+
+apiVersion: velero.io/v1
+kind: Backup
+metadata:
+  name: pre-deploy-backup-v2     # 备份名称（建议包含操作描述和版本）
+  namespace: velero
+  labels:
+    # 自定义标签：标记备份的用途和触发者
+    backup-type: pre-deploy
+    trigger: manual
+    deploy-version: "v2.0.0"
+spec:
+  # includedNamespaces：只备份这些命名空间
+  # 比 Schedule 更精确——只备份即将受影响的命名空间
+  includedNamespaces:
+    - myapp-prod
+
+  # excludedResources：排除不需要备份的资源类型
+  # 为什么排除？某些资源无法恢复或恢复后无意义
+  excludedResources:
+    - events                              # 事件是临时的，无需备份
+    - nodes                               # 节点是基础设施，不属于应用状态
+    - persistentvolumes                   # PV 由 PVC 管理，单独恢复可能冲突
+
+  # labelSelector：进一步过滤要备份的资源
+  # 只备份与 myapp 相关的资源，避免备份同一命名空间中的无关资源
+  labelSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: myapp
+
+  # ttl：保留 90 天（比定时备份更长，因为手动备份通常更重要）
+  ttl: 2160h0m0s
+
+  # includeClusterResources：是否包含集群级资源
+  # true = 备份 ClusterRole、CustomResourceDefinition 等集群级资源
+  # false = 只备份命名空间级资源
+  # 当指定了 includedNamespaces 时，默认为 false
+  includeClusterResources: false
+
+  # snapshotVolumes：是否创建 PV 快照
+  # true = 同时备份持久卷数据（通过 CSI 快照或 Restic）
+  # false = 只备份 K8s 资源定义，不备份数据
+  snapshotVolumes: true
+
+  # defaultVolumesToRestic：是否使用 Restic 备份所有卷
+  # Restic 做文件级备份（不依赖 CSI 快照功能）
+  # 适用于不支持 CSI 快照的存储类型
+  defaultVolumesToRestic: true
+
+  # metadata：额外元数据
+  # 可以添加 annotations 记录备份原因
+  # metadata:
+  #   annotations:
+  #     reason: "Pre-deploy backup for v2.0.0 release"
+
+# 查看备份状态的命令：
+# velero backup get
+# velero backup describe pre-deploy-backup-v2 --details
+# velero backup logs pre-deploy-backup-v2
+#
+# 恢复命令：
+# velero restore create restore-v2-deploy --from-backup pre-deploy-backup-v2

@@ -1,0 +1,42 @@
+# 非 root 运行的 Pod
+# 以 UID 1000 运行，根文件系统只读，遵循最小权限原则
+# 这是容器安全加固的第一步：不以 root 运行
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nonroot-pod
+  namespace: secctx-demo
+spec:
+  securityContext:
+    # 强制以非 root 用户运行
+    # 如果容器镜像默认以 root 运行且未指定 runAsUser，Pod 将拒绝启动
+    runAsNonRoot: true
+    # 以 UID 1000 运行容器进程
+    # UID 1000 通常是容器镜像中的第一个普通用户
+    runAsUser: 1000
+    # 以 GID 3000 作为进程的主组
+    runAsGroup: 3000
+    # fsGroup 控制挂载卷文件的组所有权
+    # 挂载的 Volume 中的文件 GID 会被设为 2000，使该组的进程可以读写
+    fsGroup: 2000
+  containers:
+    - name: nginx
+      image: nginx
+      ports:
+        - containerPort: 80
+      # 根文件系统设为只读，防止攻击者写入恶意文件
+      # 应用需要写临时文件时，通过 emptyDir Volume 挂载到对应目录
+      securityContext:
+        readOnlyRootFilesystem: true
+      volumeMounts:
+        # nginx 需要写入 /var/cache/nginx（缓存）和 /var/run（PID 文件）
+        # 根文件系统只读后，这些目录需要通过 Volume 挂载
+        - name: cache
+          mountPath: /var/cache/nginx
+        - name: run
+          mountPath: /var/run
+  volumes:
+    - name: cache
+      emptyDir: {}
+    - name: run
+      emptyDir: {}

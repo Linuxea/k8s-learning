@@ -1,0 +1,106 @@
+# Argo Rollouts Rollout 资源：替代 Deployment 的金丝雀发布控制器
+# Rollout 与 Deployment 的 API 完全兼容，只是增加了 strategy.canary/blueGreen
+
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: myapp-rollout
+  labels:
+    app: myapp
+spec:
+  # replicas 和 selector 与 Deployment 完全一致
+  replicas: 4
+  selector:
+    matchLabels:
+      app: myapp
+
+  # strategy 定义发布策略，这里使用金丝雀策略
+  strategy:
+    canary:
+      # steps：金丝雀发布的步骤序列
+      # Argo Rollouts 按顺序执行这些步骤
+      # setWeight 设置金丝雀的流量百分比
+      # pause 暂停，等待手动 promote 或超时后继续
+      steps:
+        # 步骤 1：将 20% 的流量路由到金丝雀版本
+        - setWeight: 20
+
+        # 步骤 2：暂停 30 秒，用于观察金丝雀的健康状况
+        # 为什么暂停？给监控系统收集指标的时间，观察是否有异常
+        - pause:
+            duration: 30s
+
+        # 步骤 3：将流量增加到 40%
+        - setWeight: 40
+
+        # 步骤 4：再次暂停 30 秒，继续观察
+        - pause:
+            duration: 30s
+
+        # 步骤 5：将流量增加到 60%
+        - setWeight: 60
+
+        # 步骤 6：无限期暂停，等待人工确认
+        # 没有 duration 的 pause 表示需要手动 promote
+        # 适合生产环境的关键发布，需要人工最终确认
+        - pause: {}
+
+        # 步骤 7：全部流量切换到新版本（隐含，steps 结束 = 100%）
+
+      # canaryService 和 stableService：用于精确流量分割
+      # Argo Rollouts 会自动修改这两个 Service 的 selector
+      # 使得流量按比例分配到 stable 和 canary Pod
+      canaryService: myapp-canary    # 指向金丝雀 Pod 的 Service
+      stableService: myapp-stable    # 指向稳定版 Pod 的 Service
+
+      # trafficRouting：配置更精确的流量分割（可选）
+      # 不配置时使用 Pod 数量比例来近似流量比例
+      # trafficRouting:
+      #   istio:
+      #     virtualServices:
+      #       - name: myapp-vsvc
+
+  # template：与 Deployment 的 pod template 完全一致
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+        - name: myapp
+          # 使用 nginx 镜像模拟应用
+          # 触发更新时修改这个镜像标签
+          image: nginx:1.25-alpine
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 15
+            periodSeconds: 20
+
+  # revisionHistoryLimit：保留的历史 ReplicaSet 数量
+  # 用于回滚，默认 10
+  revisionHistoryLimit: 3
+
+  # progressDeadlineSeconds：发布超时时间
+  # 超过这个时间未完成则标记为超时
+  progressDeadlineSeconds: 600
+
+  # minReadySeconds：Pod 就绪后等待多久才认为可用
+  # 防止 Pod 刚就绪就挂掉导致的"假就绪"
+  minReadySeconds: 10

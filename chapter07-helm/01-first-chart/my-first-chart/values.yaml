@@ -1,0 +1,44 @@
+# values.yaml —— Chart 的默认配置值
+# 模板文件通过 {{ .Values.xxx }} 引用这些值
+# 用户可以通过 --set 或 -f custom-values.yaml 覆盖
+
+replicaCount: 1
+# Deployment 的副本数，生产环境建议 >= 2
+
+image:
+  repository: nginx
+  # 镜像仓库地址，不带 tag
+  pullPolicy: IfNotPresent
+  # 镜像拉取策略：
+  #   Always         —— 每次都拉取（适合 :latest 标签）
+  #   IfNotPresent   —— 本地有就用本地的（适合固定 tag）
+  #   Never          —— 从不拉取，只用本地镜像
+  tag: ""
+  # 镜像 tag，为空时模板中会使用 .Chart.appVersion 的值
+
+service:
+  type: ClusterIP
+  # Service 类型：ClusterIP（集群内部访问）、NodePort（节点端口）、LoadBalancer（外部负载均衡器）
+  port: 80
+  # Service 暴露的端口号
+
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+# 资源限制：requests 是调度时的最低保证，limits 是硬上限
+# 生产环境务必设置，避免单个 Pod 占光节点资源
+
+nodeSelector: {}
+# 节点选择器，可以指定 Pod 调度到特定标签的节点
+# 例如：{ disktype: ssd }
+
+tolerations: []
+# 容忍度，允许 Pod 被调度到有对应污点的节点
+
+affinity: {}
+# 亲和性规则，控制 Pod 调度的更细粒度策略
+# 例如让 Pod 分散在不同节点上以实现高可用

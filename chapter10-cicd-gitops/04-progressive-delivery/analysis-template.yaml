@@ -1,0 +1,99 @@
+# AnalysisTemplate：定义金丝雀发布过程中的自动化分析规则
+# Argo Rollouts 在金丝雀步骤中引用此模板，自动运行指标检查
+# 如果分析失败，Argo Rollouts 自动中止金丝雀并回滚
+
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: success-rate-check
+spec:
+  # args：参数化模板，使 AnalysisTemplate 可复用
+  # Rollout 在引用时传入具体的 Service 名称
+  args:
+    - name: service-name
+
+  # metrics：定义要检查的指标
+  # 每个 metric 是一个独立的检查项，可以定义多个
+  metrics:
+    - name: success-rate
+      # interval：每隔多久查询一次指标
+      interval: 10s
+      # count：总共查询多少次
+      # 10 次 × 10 秒 = 总共观察 100 秒
+      count: 10
+      # successLimit：允许的"成功"次数下限
+      # 如果成功次数 < successLimit，分析标记为失败
+      successLimit: 8
+      # failureLimit：允许的"失败"次数上限
+      # 如果失败次数 > failureLimit，分析立即终止并标记为失败
+      failureLimit: 2
+      # provider：指标来源
+      provider:
+        prometheus:
+          # PromQL 查询：计算最近 1 分钟的请求成功率
+          # rate() 函数计算计数器的增长速率
+          # sum(rate(http_requests_total{code!~"5.."}[1m]))
+          #   统计非 5xx 状态码的请求速率（成功请求）
+          # sum(rate(http_requests_total[1m]))
+          #   统计所有请求的速率
+          # 两者相除 = 成功率
+          query: |
+            sum(
+              rate(http_requests_total{
+                service="{{args.service-name}}",
+                code!~"5.."
+              }[1m])
+            )
+            /
+            sum(
+              rate(http_requests_total{
+                service="{{args.service-name}}"
+              }[1m])
+            )
+
+      # failureLimit 和 successLimit 的判断逻辑：
+      # 每次 Prometheus 查询结果：
+      #   >= 0.95  → 记为成功
+      #   <  0.95  → 记为失败
+      # 如果连续失败 3 次（failureLimit=3）→ 立即终止分析，回滚金丝雀
+      # 如果 10 次查询中有 >= 8 次成功（successLimit=8）→ 分析通过
+      # failureCondition：定义什么查询结果算"失败"
+      failureLimit: 3
+      # successCondition：定义什么查询结果算"成功"
+      # 这里要求成功率 >= 95% 才算成功
+      successCondition: "result[0] >= 0.95"
+      # failureCondition：成功率 < 90% 算失败（比成功条件更严格，留缓冲区）
+      failureCondition: "result[0] < 0.90"
+
+    # 第二个指标：检查 P99 延迟
+    - name: latency-p99
+      interval: 10s
+      count: 5
+      successLimit: 4
+      failureLimit: 2
+      provider:
+        prometheus:
+          # 查询 P99 延迟，要求不超过 500ms
+          query: |
+            histogram_quantile(0.99,
+              sum(rate(http_request_duration_seconds_bucket{
+                service="{{args.service-name}}"
+              }[1m])) by (le)
+            )
+      successCondition: "result[0] <= 0.5"     # 500ms 以内算成功
+      failureCondition: "result[0] > 1.0"       # 超过 1s 算失败
+
+# 在 Rollout 中引用 AnalysisTemplate 的方式：
+# spec:
+#   strategy:
+#     canary:
+#       steps:
+#         - setWeight: 20
+#         - analysis:
+#             templates:
+#               - templateName: success-rate-check
+#             args:
+#               - name: service-name
+#                 value: myapp-canary
+#         - setWeight: 40
+#         - pause: {}

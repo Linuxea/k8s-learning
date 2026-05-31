@@ -1,0 +1,79 @@
+# memory-alert-rule.yaml
+# PrometheusRule：定义内存使用率告警规则
+# 当 Pod 内存使用超过 limit 的 80% 时触发 warning 告警
+# 当超过 95% 时触发 critical 告警
+# 这个规则使用 kube-prometheus-stack 的 PrometheusRule CRD
+
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: memory-alerts
+  namespace: monitoring
+  labels:
+    # 这个标签让 Prometheus Operator 能够发现并加载此规则
+    # kube-prometheus-stack 默认通过此标签选择 PrometheusRule
+    prometheus: kube-prometheus-stack
+    # 用于标识规则来源
+    role: alert-rules
+spec:
+  groups:
+    - name: memory.rules
+      rules:
+        # Warning 级别：内存使用超过 80%
+        - alert: PodMemoryUsageWarning
+          # PromQL 表达式：计算每个 Pod 的内存使用率
+          # container_memory_working_set_bytes：容器实际使用的内存（包含常驻内存）
+          # container_spec_memory_limit_bytes：容器的内存 limit
+          # 排除空容器名和 POD（pause 容器）
+          expr: |
+            (container_memory_working_set_bytes{container!="", container!="POD"}
+              /
+            container_spec_memory_limit_bytes{container!="", container!="POD"} > 0)
+              > 0.8
+          # 条件需要持续 5 分钟才触发告警
+          # 避免内存短暂波动导致的误报
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            # 模板变量：$labels 和 $value 在告警时会被替换为实际值
+            summary: "Pod 内存使用率超过 80%"
+            description: >
+              Pod {{ $labels.namespace }}/{{ $labels.pod }} 的容器 {{ $labels.container }}
+              内存使用率为 {{ $value | humanizePercentage }}，已超过 80% 阈值。
+              请检查是否存在内存泄漏或考虑增加内存 limit。
+
+        # Critical 级别：内存使用超过 95%，随时可能被 OOM Kill
+        - alert: PodMemoryUsageCritical
+          expr: |
+            (container_memory_working_set_bytes{container!="", container!="POD"}
+              /
+            container_spec_memory_limit_bytes{container!="", container!="POD"} > 0)
+              > 0.95
+          # Critical 告警的持续时间更短（1 分钟）
+          # 因为内存快满时需要更快响应
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Pod 内存使用率超过 95%（紧急）"
+            description: >
+              Pod {{ $labels.namespace }}/{{ $labels.pod }} 的容器 {{ $labels.container }}
+              内存使用率为 {{ $value | humanizePercentage }}，即将被 OOM Kill！
+              请立即检查并处理，否则服务将中断。
+
+        # 集群级别：总内存使用率告警
+        - alert: ClusterMemoryPressure
+          # 计算整个集群的内存使用率
+          expr: |
+            (sum(container_memory_working_set_bytes{id="/"})
+              /
+            sum(machine_memory_bytes)) > 0.85
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "集群内存压力过大"
+            description: >
+              集群整体内存使用率为 {{ $value | humanizePercentage }}，超过 85%。
+              可能需要添加新节点或优化资源分配。

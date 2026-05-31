@@ -1,0 +1,218 @@
+# custom-dashboard-configmap.yaml
+# 通过 ConfigMap 定义 Grafana 仪表盘
+# kube-prometheus-stack 包含一个 Grafana sidecar 容器
+# 它会自动监听带有特定标签的 ConfigMap，并将其中定义的仪表盘加载到 Grafana
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-k8s-quick-overview
+  namespace: monitoring
+  labels:
+    # 这个标签是 Grafana sidecar 发现仪表盘 ConfigMap 的关键
+    # sidecar 通过 watch 带有此标签的 ConfigMap 来自动同步仪表盘
+    grafana_dashboard: "1"
+data:
+  # key 必须以 .json 结尾，sidecar 才会识别为仪表盘定义
+  k8s-quick-overview.json: |
+    {
+      "annotations": {
+        "list": []
+      },
+      "description": "Kubernetes 集群快速概览仪表盘 - 包含核心资源指标",
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "id": null,
+      "links": [],
+      "panels": [
+        {
+          "title": "集群节点数",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+          "targets": [
+            {
+              "expr": "count(up{job=\"node-exporter\"})",
+              "legendFormat": "节点数",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "steps": [
+                  { "color": "red", "value": null },
+                  { "color": "green", "value": 1 }
+                ]
+              },
+              "mappings": []
+            }
+          }
+        },
+        {
+          "title": "运行中的 Pod 数",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+          "targets": [
+            {
+              "expr": "count(kube_pod_status_phase{phase=\"Running\"})",
+              "legendFormat": "运行中",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "steps": [
+                  { "color": "blue", "value": null }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "集群 CPU 使用率",
+          "type": "gauge",
+          "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+          "targets": [
+            {
+              "expr": "sum(rate(node_cpu_seconds_total{mode!=\"idle\"}[5m])) / sum(rate(node_cpu_seconds_total[5m])) * 100",
+              "legendFormat": "CPU%",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "max": 100,
+              "thresholds": {
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 60 },
+                  { "color": "red", "value": 85 }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "集群内存使用率",
+          "type": "gauge",
+          "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+          "targets": [
+            {
+              "expr": "(1 - sum(node_memory_MemAvailable_bytes) / sum(node_memory_MemTotal_bytes)) * 100",
+              "legendFormat": "Memory%",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "max": 100,
+              "thresholds": {
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 70 },
+                  { "color": "red", "value": 90 }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "title": "CPU 使用趋势（按节点）",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+          "targets": [
+            {
+              "expr": "100 - (avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+              "legendFormat": "{{ instance }}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "custom": {
+                "fillOpacity": 10
+              }
+            }
+          }
+        },
+        {
+          "title": "内存使用趋势（按节点）",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+          "targets": [
+            {
+              "expr": "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100",
+              "legendFormat": "{{ instance }}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "custom": {
+                "fillOpacity": 10
+              }
+            }
+          }
+        },
+        {
+          "title": "Pod 重启次数（Top 10）",
+          "type": "barchart",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+          "targets": [
+            {
+              "expr": "topk(10, sum(kube_pod_container_status_restarts_total) by (namespace, pod))",
+              "legendFormat": "{{ namespace }}/{{ pod }}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" }
+            }
+          }
+        },
+        {
+          "title": "网络 I/O（按节点）",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+          "targets": [
+            {
+              "expr": "rate(node_network_receive_bytes_total{device=\"eth0\"}[5m])",
+              "legendFormat": "{{ instance }} RX",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(node_network_transmit_bytes_total{device=\"eth0\"}[5m])",
+              "legendFormat": "{{ instance }} TX",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "Bps"
+            }
+          }
+        }
+      ],
+      "schemaVersion": 39,
+      "tags": ["kubernetes", "overview"],
+      "templating": {
+        "list": []
+      },
+      "time": { "from": "now-1h", "to": "now" },
+      "timepicker": {},
+      "timezone": "browser",
+      "title": "K8s Quick Overview",
+      "uid": "k8s-quick-overview",
+      "version": 1
+    }

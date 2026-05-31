@@ -1,0 +1,16 @@
+# "拒绝所有入站流量"策略
+# 这是零信任网络的最佳起点：先拒绝所有，再按需放行
+# podSelector 为空表示选中命名空间内所有 Pod
+# ingress 规则为空表示没有任何入站流量被允许
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all-ingress
+  namespace: netpol-demo
+spec:
+  # 空的 podSelector 匹配命名空间内所有 Pod
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  # 空的 ingress 规则列表 = 没有允许的入站流量 = 全部拒绝
+  ingress: []

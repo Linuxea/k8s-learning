@@ -1,0 +1,16 @@
+apiVersion: v2
+# Chart API 版本，v2 是 Helm 3 的格式（支持依赖声明在 dependencies 字段中）
+name: my-first-chart
+# Chart 名称，即包名，全局唯一标识这个 Chart
+description: 我的第一个 Helm Chart —— 一个精简的 nginx 部署
+type: application
+# application = 可直接部署的 Chart；library = 只提供可复用模板的库 Chart
+version: 0.1.0
+# Chart 自身的版本号，每次修改 Chart 内容（模板、values 等）时必须递增
+# Helm 要求遵循语义化版本（SemVer 2）：MAJOR.MINOR.PATCH
+appVersion: "1.27.0"
+# 包含应用（nginx）的版本号，仅作信息展示，不参与模板渲染逻辑
+# 留空时模板中 .Values.image.tag 可以用 .Chart.appVersion 作为默认值
+maintainers:
+  - name: linuxea
+    email: linuxea@example.com

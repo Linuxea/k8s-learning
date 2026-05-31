@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-redis-master
+  # 这个 Service 名称必须和父 Chart 的 REDIS_HOST 环境变量值一致
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: master
+spec:
+  type: ClusterIP
+  # ClusterIP 类型：只在集群内部可达
+  ports:
+    - port: 6379
+      targetPort: redis
+      protocol: TCP
+      name: redis
+  selector:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: master
+    # selector 必须精确匹配 Deployment 中 Pod 的 labels

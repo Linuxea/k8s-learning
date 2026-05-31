@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: local-pv
+  # PV 是集群级别资源，没有 namespace
+  # 它的存在不依赖于任何 namespace 中的工作负载
+spec:
+  capacity:
+    storage: 1Gi   # 声明这个 PV 有 1GB 的存储空间
+
+  # 访问模式定义了这个存储可以被怎样使用
+  # ReadWriteOnce (RWO): 只能被一个节点以读写方式挂载
+  # ReadOnlyMany (ROX): 可以被多个节点以只读方式挂载
+  # ReadWriteMany (RWX): 可以被多个节点以读写方式挂载
+  # ReadWriteOncePod (RWOP): 只能被一个 Pod 以读写方式挂载（Kubernetes 1.27+）
+  accessModes:
+    - ReadWriteOnce
+
+  # 回收策略：当 PVC 被释放后，PV 怎么处理
+  # Retain: 保留数据，需要管理员手动清理
+  # Delete: 自动删除 PV 和底层存储
+  # Recycle: 已废弃，执行 rm -rf 后重新可用
+  persistentVolumeReclaimPolicy: Retain
+
+  # 存储类名：PVC 通过这个名字匹配 StorageClass
+  # 设为空字符串或省略表示不属于任何 StorageClass
+  storageClassName: local-storage
+
+  # 卷绑定模式：WaitForFirstConsumer 表示直到有 Pod 使用相关 PVC 时才绑定
+  # 这确保 PV 和 Pod 调度到同一个节点
+  volumeMode: Filesystem
+
+  # local 类型：使用节点上的本地存储
+  local:
+    # 节点上实际存在的路径
+    # 需要确保这个路径在目标节点上存在
+    path: /tmp/k8s-pv-data
+
+  # 使用 local 卷时必须指定 nodeAffinity
+  # 确保 Pod 被调度到有这个存储的节点上
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                # 替换为你的 worker 节点名称
+                # 用 kubectl get nodes --show-labels 查看
+                - k8s-learning-worker

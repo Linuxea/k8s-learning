@@ -1,0 +1,75 @@
+# Velero 安装参考命令
+# Velero 推荐使用 CLI 安装，自动创建所有必要的 K8s 资源
+# 这个文件记录了安装参数和步骤
+
+# ============================================================
+# 第一步：安装 Velero CLI
+# ============================================================
+# curl -LO https://github.com/vmware-tanzu/velero/releases/download/v1.13.0/velero-v1.13.0-linux-amd64.tar.gz
+# tar -xzf velero-v1.13.0-linux-amd64.tar.gz
+# sudo mv velero-v1.13.0-linux-amd64/velero /usr/local/bin/
+# velero version --client-only
+
+# ============================================================
+# 第二步：创建凭证文件（credentials-velero）
+# ============================================================
+# 对于 AWS S3：
+# [default]
+# aws_access_key_id=AKIAIOSFODNN7EXAMPLE
+# aws_secret_access_key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+
+# 对于本地 Minio（学习环境）：
+# [default]
+# aws_access_key_id=minioadmin
+# aws_secret_access_key=minioadmin
+
+# ============================================================
+# 第三步：安装 Velero 到集群
+# ============================================================
+# velero install [flags]
+#
+# 常用 flags:
+#   --provider              存储提供商：aws, azure, gcp, local
+#   --plugins               需要的插件镜像
+#   --bucket                S3 bucket 名称
+#   --backup-location-config  存储位置配置（键值对）
+#   --snapshot-location-config 快照位置配置
+#   --secret-file           凭证文件路径
+#   --namespace             安装到的命名空间（默认 velero）
+#   --use-restic            启用 Restic 文件级备份（用于 PV 数据）
+#   --default-volumes-to-restic  默认使用 Restic 备份所有 PV
+#   --features              启用特性门控
+
+# 示例：使用本地 Minio（学习环境）
+# velero install \
+#   --provider aws \
+#   --plugins velero/velero-plugin-for-aws:v1.9.0 \
+#   --bucket velero-backups \
+#   --backup-location-config region=minio,s3ForcePathStyle=true,s3Url=http://<MINIO_HOST>:9000 \
+#   --snapshot-location-config region=minio \
+#   --secret-file ./credentials-velero \
+#   --namespace velero \
+#   --use-restic \
+#   --default-volumes-to-restic
+
+# 示例：使用 AWS S3（生产环境）
+# velero install \
+#   --provider aws \
+#   --plugins velero/velero-plugin-for-aws:v1.9.0 \
+#   --bucket my-k8s-backups \
+#   --backup-location-config region=us-west-2 \
+#   --snapshot-location-config region=us-west-2 \
+#   --secret-file ./credentials-velero
+
+# ============================================================
+# 第四步：验证安装
+# ============================================================
+# kubectl get pods -n velero
+# velero backup-location get
+# velero snapshot-location get
+
+# ============================================================
+# 卸载 Velero
+# ============================================================
+# velero uninstall
+# 这会删除 velero 命名空间和所有相关资源（CRD、RBAC 等）

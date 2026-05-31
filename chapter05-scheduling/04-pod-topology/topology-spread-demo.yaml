@@ -1,0 +1,43 @@
+# ============================================================
+# Pod 拓扑分布约束：让副本均匀分布在各个拓扑域中
+# 拓扑域可以是节点、可用区、机架等，通过 topologyKey 定义
+# ============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: topology-spread-demo
+  labels:
+    app: web
+spec:
+  replicas: 6
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      # topologySpreadConstraints: 控制副本在拓扑域间的分布
+      topologySpreadConstraints:
+        - # maxSkew: 最大倾斜度，允许不同拓扑域之间 Pod 数量的最大差值
+          # 设为 1 表示各域的 Pod 数最多相差 1 个
+          maxSkew: 1
+          # topologyKey: 定义拓扑域的节点标签键
+          # kubernetes.io/hostname 表示每个节点是一个独立的拓扑域
+          # 如果用 topology.kubernetes.io/zone 则表示每个可用区是一个拓扑域
+          topologyKey: kubernetes.io/hostname
+          # whenUnsatisfiable: 当无法满足 maxSkew 约束时的策略
+          # DoNotSchedule: 不调度（严格模式），保证分布均匀但可能导致 Pending
+          # ScheduleAnyway: 无论如何都调度（宽松模式），尽量均匀但不阻塞
+          whenUnsatisfiable: DoNotSchedule
+          # labelSelector: 选择属于这个约束的 Pod
+          # 调度器会统计匹配此 selector 的 Pod 在各拓扑域中的数量
+          labelSelector:
+            matchLabels:
+              app: web
+      containers:
+        - name: nginx
+          image: nginx:1.27
+          ports:
+            - containerPort: 80

@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-required-affinity
+  labels:
+    app: nginx
+    env: demo
+spec:
+  affinity:
+    nodeAffinity:
+      # requiredDuringSchedulingIgnoredDuringExecution: 硬性要求
+      # Pod 必须调度到满足条件的节点，否则永远 Pending
+      # "IgnoredDuringExecution" 表示 Pod 已运行后，节点标签变化不会驱逐 Pod
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              # operator: In — 节点标签值必须在给定列表中
+              - key: zone
+                operator: In
+                values:
+                  - zone-a
+                  - zone-b
+  containers:
+    - name: nginx
+      image: nginx:1.27
+      ports:
+        - containerPort: 80

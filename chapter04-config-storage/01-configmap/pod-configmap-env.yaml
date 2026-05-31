@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: configmap-env-demo
+  labels:
+    app: config-demo
+spec:
+  containers:
+    - name: busybox
+      image: busybox:1.36
+      # 每隔 3600 秒打印一次环境变量，方便观察
+      command: ["sh", "-c", "env | grep -E 'LOG_LEVEL|APP_ENV|MAX_CONN' && sleep 3600"]
+      env:
+        # 方式一：逐个引用 ConfigMap 中的键
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: app-config       # ConfigMap 的名字
+              key: LOG_LEVEL          # 要取的键
+
+        - name: APP_ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: APP_ENV            # 容器里的变量名可以和 ConfigMap 中的键名不同
+
+        - name: MAX_CONNECTIONS
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: MAX_CONNECTIONS
+
+      # 方式二：一键导入 ConfigMap 中所有键值对为环境变量
+      # 注意：如果 ConfigMap 中有键名不符合环境变量命名规范（如包含点号），会被静默跳过
+      # envFrom:
+      #   - configMapRef:
+      #       name: app-config
+      #     # prefix: APP_  # 可选：给所有变量加前缀，避免冲突
+
+  restartPolicy: Never

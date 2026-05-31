@@ -1,0 +1,42 @@
+# Init 容器演示：模拟等待依赖服务就绪
+# Init 容器在主容器之前按顺序执行，全部成功后主容器才会启动
+apiVersion: v1
+kind: Pod
+metadata:
+  name: init-demo
+  labels:
+    chapter: "03"
+spec:
+  # Init 容器列表：按顺序执行，前一个成功后才执行下一个
+  initContainers:
+    # 第一个 Init 容器：模拟等待数据库就绪
+    # 真实场景中，这里可能是一个等待数据库连接的脚本
+    - name: wait-for-db
+      image: busybox:1.36
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          echo "Checking if database is ready..."
+          # 模拟等待 15 秒（真实场景可能是循环检查 TCP 连接或 HTTP 接口）
+          for i in $(seq 1 15); do
+            echo "Attempt $i/15: DB not ready yet, waiting..."
+            sleep 1
+          done
+          echo "Database is ready! Init container completed."
+
+    # 第二个 Init 容器：模拟配置初始化（取消注释可以测试多 Init 容器）
+    # - name: init-config
+    #   image: busybox:1.36
+    #   command: ["/bin/sh", "-c"]
+    #   args:
+    #     - |
+    #       echo "Initializing configuration..."
+    #       sleep 5
+    #       echo "Configuration initialized."
+
+  # 主容器：只有所有 Init 容器成功后才启动
+  containers:
+    - name: main-app
+      image: nginx:1.27
+      ports:
+        - containerPort: 80

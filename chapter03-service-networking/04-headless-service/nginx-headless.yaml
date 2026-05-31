@@ -1,0 +1,50 @@
+# ============================================================
+# Headless Service 示例：Deployment + Headless Service
+# ============================================================
+
+---
+# Deployment: 3 个 nginx Pod，每个有稳定的 hostname
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-headless
+  labels:
+    app: nginx-headless
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nginx-headless
+  template:
+    metadata:
+      labels:
+        # Service 通过这个标签匹配 Pod
+        app: nginx-headless
+      # 给每个 Pod 加一个唯一标识，方便区分
+      annotations:
+        pod-template-hash: "true"
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27
+          ports:
+            - containerPort: 80
+
+---
+# Service: Headless 类型
+# clusterIP: None 是关键——告诉 K8s 不要分配虚拟 IP
+# DNS 查询会直接返回所有匹配 Pod 的 IP，而不是 Service 的虚拟 IP
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-headless-svc
+spec:
+  # 关键字段：设为 None 使其成为 Headless Service
+  # K8s 不会分配 ClusterIP，也不会通过 kube-proxy 做负载均衡
+  clusterIP: None
+  selector:
+    app: nginx-headless
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80

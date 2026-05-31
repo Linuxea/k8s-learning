@@ -1,0 +1,62 @@
+# MutatingWebhookConfiguration: 注册一个 Mutating Admission Webhook
+# 告诉 K8s API Server："在创建 Pod 时，请调用这个 webhook 来修改对象"
+#
+# API 请求处理流程：
+#   用户请求 → Authentication → Authorization → Admission Control → etcd
+#                                                  ↑
+#                                        就在这里拦截并修改
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: add-default-label
+  labels:
+    chapter: "09"
+webhooks:
+  - name: add-default-label.example.com
+    # Webhook 的服务端地址
+    # 指向集群内的一个 Service，该 Service 背后是 webhook 服务器
+    clientConfig:
+      service:
+        # webhook 服务所在的命名空间和 Service 名称
+        name: label-webhook-service
+        namespace: webhook-demo
+        # webhook 服务监听的端口和路径
+        port: 443
+        path: /mutate
+      # CA Bundle：用于验证 webhook 服务器的 TLS 证书
+      # 这是安全通信的关键——API Server 需要确认 webhook 服务器的身份
+      # 在实际部署中，这里填入 webhook 服务器证书对应的 CA 证书（base64 编码）
+      caBundle: ""
+    # 哪些资源变更会触发这个 webhook
+    rules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        resources: ["pods"]
+        operations: ["CREATE"]
+        scope: "Namespaced"
+    # namespace 选择器：只在特定命名空间中生效
+    # 避免在 kube-system 等系统命名空间中干扰 K8s 组件
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - kube-system
+            - kube-public
+            - kube-node-lease
+    # 失败策略：webhook 不可用时怎么办
+    # Ignore = 忽略失败，允许请求通过（适合非关键的标签注入）
+    # Fail = 拒绝请求（适合安全策略，如注入 sidecar）
+    failurePolicy: Ignore
+    # reinvocationPolicy: 修改后是否可以被其他 webhook 再次修改
+    # Never = 只调用一次（默认）
+    # IfNeeded = 如果对象被其他 webhook 修改了，可以再次调用
+    reinvocationPolicy: Never
+    # 超时时间（秒），webhook 必须在这个时间内响应
+    timeoutSeconds: 5
+    # sideEffects: webhook 是否有副作用
+    # None 表示 webhook 不会修改 K8s 资源以外的任何东西
+    # 这是 K8s 1.28+ 的要求，用于安全和审计
+    sideEffects: None
+    # admissionReviewVersions: webhook 支持的 AdmissionReview API 版本
+    admissionReviewVersions: ["v1"]

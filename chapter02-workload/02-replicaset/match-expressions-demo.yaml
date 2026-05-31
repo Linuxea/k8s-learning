@@ -1,0 +1,51 @@
+# match-expressions-demo.yaml
+# 演示 matchExpressions 高级标签选择器
+# 使用 In/NotIn/Exists/DoesNotExist 操作符
+
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: match-expressions-demo
+  labels:
+    chapter: "02"
+spec:
+  replicas: 2
+
+  selector:
+    matchExpressions:
+      # In 操作符：app 标签的值必须是 nginx 或 apache 之一
+      - key: app
+        operator: In
+        values:
+          - nginx
+          - apache
+
+      # Exists 操作符：只要存在 tier 标签就行，不管值是什么
+      - key: tier
+        operator: Exists
+
+      # NotIn 操作符：env 标签的值不能是 test
+      - key: env
+        operator: NotIn
+        values:
+          - test
+
+  template:
+    metadata:
+      labels:
+        app: nginx           # 匹配 In [nginx, apache]
+        tier: frontend       # 匹配 Exists
+        env: production      # 匹配 NotIn [test]
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi

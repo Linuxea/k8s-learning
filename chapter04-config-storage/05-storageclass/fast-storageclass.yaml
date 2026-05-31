@@ -1,0 +1,32 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: fast-local
+  # StorageClass 是集群级别资源，没有 namespace
+  # annotation 可以标记为默认 StorageClass：
+  # annotations:
+  #   storageclass.kubernetes.io/is-default-class: "true"
+provisioner: rancher.io/local-path
+# provisioner: 决定由谁来创建实际的存储资源
+# kind 默认安装了 local-path-provisioner（rancher.io/local-path）
+# 其他常见 provisioner：
+# - kubernetes.io/aws-ebs（AWS EBS）
+# - kubernetes.io/gce-pd（GCE Persistent Disk）
+# - csi-driver（各种 CSI 驱动）
+
+# 回收策略：PVC 删除后自动删除 PV 和底层存储
+reclaimPolicy: Delete
+
+# 卷绑定模式：
+# Immediate: PVC 创建后立即绑定（默认）
+# WaitForFirstConsumer: 延迟到有 Pod 使用 PVC 时才绑定和创建存储
+# WaitForFirstConsumer 适合本地存储，确保存储和 Pod 在同一节点
+volumeBindingMode: WaitForFirstConsumer
+
+# provisioner 的参数，不同 provisioner 参数不同
+parameters:
+  # local-path-provisioner 的参数：指定存储路径
+  path: /tmp/k8s-dynamic-storage
+  # 不同 provisioner 有不同参数，例如 AWS EBS:
+  # type: gp3
+  # iopsPerGB: "50"

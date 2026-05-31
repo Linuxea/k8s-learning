@@ -1,0 +1,46 @@
+# ============================================================
+# Ingress Resource: 路径路由规则
+# ============================================================
+
+---
+# Ingress: 定义 HTTP 路由规则
+# Ingress Controller（NGINX）负责实现这些规则
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: demo-ingress
+  # annotations 为 Ingress Controller 提供额外配置
+  # 不同的 Ingress Controller 支持不同的 annotation
+  annotations:
+    # 使用 NGINX Ingress Controller 的 rewrite-target 注解
+    # 这里不重写路径，直接透传
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  # 指定使用哪个 Ingress Controller
+  # kind 集群中安装的是 NGINX Ingress Controller，对应这个 class
+  ingressClassName: nginx
+  rules:
+    # 基于 HTTP 路径的路由规则
+    # 不指定 host，匹配所有域名/IP
+    - http:
+        paths:
+          # 路径 /api → 转发到 api-service
+          - path: /api
+            # ImplementationSpecific: 由 Ingress Controller 决定匹配方式
+            # Prefix: 前缀匹配（/api 匹配 /api, /api/v1, /api/xxx）
+            # Exact: 精确匹配（只匹配 /api，不匹配 /api/v1）
+            pathType: Prefix
+            backend:
+              service:
+                name: api-service
+                port:
+                  number: 80
+          # 路径 / → 转发到 web-service（默认路由）
+          # 因为 / 是最宽泛的前缀，所有不匹配 /api 的请求都会到这里
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web-service
+                port:
+                  number: 80

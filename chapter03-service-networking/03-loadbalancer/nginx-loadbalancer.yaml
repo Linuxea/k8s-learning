@@ -1,0 +1,49 @@
+# ============================================================
+# LoadBalancer Service 示例：Deployment + Service
+# ============================================================
+
+---
+# Deployment: 2 个 nginx Pod
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-loadbalancer
+  labels:
+    app: nginx-loadbalancer
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nginx-loadbalancer
+  template:
+    metadata:
+      labels:
+        app: nginx-loadbalancer
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27
+          ports:
+            - containerPort: 80
+
+---
+# Service: LoadBalancer 类型
+# 在云环境中，云提供商会自动创建一个外部负载均衡器
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-loadbalancer-svc
+  # annotations 可以用来传递额外配置给云提供商
+  # 不同云提供商支持不同的 annotation
+  # annotations:
+  #   service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+spec:
+  type: LoadBalancer
+  selector:
+    app: nginx-loadbalancer
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+      # LoadBalancer 类型也可以指定 nodePort，通常省略让 K8s 自动分配
+      # 因为外部流量通过云 LB → NodePort → Pod，NodePort 对用户透明

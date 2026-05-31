@@ -1,0 +1,17 @@
+# CR（CustomResource）: Website 自定义资源的一个实例
+# 就像 Deployment 是 Deployment 资源的实例一样
+# 这个 Website 实例描述了一个想要运行的网站
+apiVersion: example.com/v1alpha1
+kind: Website
+metadata:
+  name: my-blog
+  namespace: default
+  labels:
+    app: blog
+    chapter: "09"
+spec:
+  # 以下三个字段都在 CRD 的 schema 中定义过
+  # K8s API Server 会根据 CRD 中的 OpenAPI v3 schema 自动校验这些值
+  image: nginx:1.27
+  replicas: 3
+  host: blog.example.com

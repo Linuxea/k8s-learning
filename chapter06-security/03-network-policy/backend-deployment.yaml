@@ -1,0 +1,22 @@
+# backend Deployment：模拟后端服务
+# 通过标签 app=backend 让 NetworkPolicy 能精确选中这些 Pod
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: netpol-demo
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: nginx
+          image: nginx
+          ports:
+            - containerPort: 80

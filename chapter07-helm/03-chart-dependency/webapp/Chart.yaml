@@ -1,0 +1,17 @@
+apiVersion: v2
+name: webapp
+description: 演示 Chart 依赖管理的 Web 应用（依赖 Redis 子 Chart）
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+
+dependencies:
+  - name: redis
+    version: "0.1.0"
+    repository: "file://./charts/redis"
+    # file:// 协议表示从本地路径加载子 Chart（教学用）
+    # 实际项目中通常使用 HTTP 仓库地址，如：
+    # repository: "https://charts.bitnami.com/bitnami"
+    condition: redis.enabled
+    # 当 values.yaml 中 redis.enabled 为 true 时才安装 Redis
+    # 这是"可选依赖"的标准做法

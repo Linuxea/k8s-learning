@@ -1,0 +1,25 @@
+# "只允许 frontend 访问 backend"策略
+# 精确控制：只有 app=frontend 的 Pod 才能访问 backend 的 80 端口
+# 其他所有 Pod 的入站请求都会被拒绝
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend
+  namespace: netpol-demo
+spec:
+  # 策略保护的目标：带有 app=backend 标签的 Pod
+  podSelector:
+    matchLabels:
+      app: backend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        # 来源限制：只允许 app=frontend 的 Pod
+        # podSelector 只匹配同一命名空间内的 Pod
+        - podSelector:
+            matchLabels:
+              app: frontend
+      # 端口限制：只开放 80 端口
+      ports:
+        - port: 80

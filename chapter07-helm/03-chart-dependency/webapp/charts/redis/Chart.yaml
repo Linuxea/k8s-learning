@@ -1,0 +1,6 @@
+apiVersion: v2
+name: redis
+description: 精简的 Redis 子 Chart（教学用途，非生产级）
+type: application
+version: 0.1.0
+appVersion: "7.2-alpine"

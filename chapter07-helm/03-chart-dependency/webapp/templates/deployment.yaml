@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "webapp.fullname" . }}
+  labels:
+    {{- include "webapp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "webapp.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: frontend
+  template:
+    metadata:
+      labels:
+        {{- include "webapp.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: frontend
+    spec:
+      containers:
+        - name: webapp
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          env:
+            # 根据是否启用了 Redis 注入不同的环境变量
+            {{- if .Values.redis.enabled }}
+            - name: REDIS_HOST
+              value: "{{ include "webapp.fullname" . }}-redis-master"
+              # 子 Chart 创建的 Service 名称格式：<release>-<chart>-<service>
+              # 这里指向 Redis master Service
+            - name: REDIS_PORT
+              value: "6379"
+            {{- else }}
+            - name: REDIS_ENABLED
+              value: "false"
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

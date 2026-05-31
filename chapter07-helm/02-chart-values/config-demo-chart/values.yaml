@@ -1,0 +1,53 @@
+# config-demo-chart 的默认配置
+# 所有值都可以被 -f custom.yaml 或 --set 覆盖
+
+replicaCount: 1
+# Pod 副本数
+
+image:
+  repository: nginx
+  # 镜像名称（不含 tag）
+  pullPolicy: IfNotPresent
+  tag: ""
+  # 为空时使用 Chart.yaml 的 appVersion
+
+# 应用级别的配置，会注入到 ConfigMap 中
+appConfig:
+  greeting: "Hello from Helm"
+  # 问候语，模板中会用 upper 函数转换为大写
+  maxRetries: "3"
+  # 最大重试次数
+  logLevel: "info"
+  # 日志级别：debug / info / warn / error
+  features:
+    - "metrics"
+    - "healthz"
+  # 功能开关列表，模板中会用 range 遍历
+
+# 额外的环境变量，模板中用 range 遍历
+extraEnv: []
+# 使用示例：
+# extraEnv:
+#   - name: FOO
+#     value: "bar"
+#   - name: BAZ
+#     value: "qux"
+
+service:
+  type: ClusterIP
+  port: 80
+
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+# 额外的标签（演示 range 遍历字典）
+extraLabels: {}
+# 使用示例：
+# extraLabels:
+#   team: platform
+#   env: production

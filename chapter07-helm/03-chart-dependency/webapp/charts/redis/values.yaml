@@ -1,0 +1,21 @@
+architecture: standalone
+
+auth:
+  enabled: false
+
+master:
+  persistence:
+    enabled: false
+
+image:
+  repository: redis
+  tag: "7.2-alpine"
+  pullPolicy: IfNotPresent
+
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi

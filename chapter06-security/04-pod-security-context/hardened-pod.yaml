@@ -1,0 +1,44 @@
+# 全面加固的 Pod：非 root + 只读文件系统 + 精简 capabilities
+# 这是生产环境推荐的安全基线配置
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hardened-pod
+  namespace: secctx-demo
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 3000
+    fsGroup: 2000
+  containers:
+    - name: nginx
+      image: nginx
+      ports:
+        - containerPort: 80
+      securityContext:
+        # 根文件系统只读：防止篡改二进制和配置文件
+        readOnlyRootFilesystem: true
+        # 禁止特权提升：即使容器内有 setuid 二进制（如 sudo）也不会生效
+        # 这设置了 Linux 的 no_new_privs 标志
+        allowPrivilegeEscalation: false
+        # Linux Capabilities 精细控制：
+        # 先丢弃所有能力，再按需添加
+        # 大多数 Web 应用不需要任何额外的 Linux 能力
+        capabilities:
+          drop:
+            - ALL
+      volumeMounts:
+        - name: cache
+          mountPath: /var/cache/nginx
+        - name: run
+          mountPath: /var/run
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: cache
+      emptyDir: {}
+    - name: run
+      emptyDir: {}
+    - name: tmp
+      emptyDir: {}

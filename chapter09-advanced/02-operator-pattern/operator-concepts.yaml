@@ -1,0 +1,151 @@
+# 这个文件不是可部署的 K8s 资源，而是用 YAML 注释的形式
+# 解释 Operator 的核心架构和概念
+# 将 Operator 的组件映射到 K8s 资源，帮助理解整体结构
+
+# ============================================================
+# Operator = CRD + Custom Controller
+# ============================================================
+#
+# 1. CRD 层 —— 定义"想要什么"
+#    就像数据库的表结构，定义自定义资源的 schema
+#    例如：定义一个 Backup 资源，包含 schedule、target、retention 等字段
+#
+# 2. Controller 层 —— 实现"怎么做"
+#    一个持续运行的控制循环，负责：
+#    - Watch: 监听 CRD 资源的变化（增/删/改）
+#    - Diff:  对比"期望状态"和"实际状态"
+#    - Reconcile: 执行操作，使实际状态趋近期望状态
+#
+# ============================================================
+# Reconcile Loop（调谐循环）详解
+# ============================================================
+#
+#   ┌─────────────────────────────────────────────────┐
+#   │              Reconcile Loop                     │
+#   │                                                 │
+#   │   1. Watch: 收到事件（CR 创建/更新/删除）        │
+#   │          ↓                                      │
+#   │   2. 获取期望状态: 从 CR spec 中读取            │
+#   │          ↓                                      │
+#   │   3. 获取实际状态: 查询 K8s 集群当前状态        │
+#   │          ↓                                      │
+#   │   4. Diff: 期望 vs 实际，找出差异               │
+#   │          ↓                                      │
+#   │   5. Act: 创建/更新/删除资源，消除差异          │
+#   │          ↓                                      │
+#   │   6. Update Status: 更新 CR 的 status 字段      │
+#   │          ↓                                      │
+#   │   回到 1，持续循环                              │
+#   └─────────────────────────────────────────────────┘
+#
+# 这个循环不是一次性的，而是"最终一致性"模型：
+# 即使 Controller 崩溃重启，重新进入循环后依然能恢复到正确状态
+#
+# ============================================================
+# Operator vs 原生 Controller
+# ============================================================
+#
+# K8s 内置了很多 Controller:
+#   - Deployment Controller: 管理 ReplicaSet → Pod
+#   - ReplicaSet Controller: 维护 Pod 副本数
+#   - Node Controller: 监控节点健康
+#   - Service Controller: 管理 Service → Endpoints
+#
+# Operator 是用户自定义的 Controller，模式完全一样：
+#   - 监听自定义资源（CRD）
+#   - 根据期望状态调谐 K8s 资源
+#   - 额外：可以编码运维知识（备份、恢复、扩缩容策略）
+#
+# ============================================================
+# Operator SDK 框架
+# ============================================================
+#
+# 写一个完整的 Operator 需要：
+#   - 实现 Watch 逻辑（Informer 机制）
+#   - 处理事件队列
+#   - 实现 Reconcile 逻辑
+#   - 管理 RBAC 权限
+#   - 处理错误和重试
+#
+# 框架帮你处理 80% 的样板代码：
+#
+# | 框架          | 语言       | 特点                          |
+# |--------------|-----------|-------------------------------|
+# | Kubebuilder  | Go        | 官方推荐，基于 controller-runtime |
+# | Operator SDK | Go/Ansible/Helm | RedHat 出品，多语言支持    |
+# | Metacontroller| 任意语言   | 轻量级，通过 Webhook 实现      |
+#
+# ============================================================
+# 一个 Backup Operator 的参考架构
+# ============================================================
+#
+# CRD: backup.yaml (定义 Backup 资源的 schema)
+#   ↓
+# CR:  backup-cr.yaml (用户创建的备份实例)
+#   ↓
+# Controller (Go 程序):
+#   - Watch Backup CR 的变化
+#   - 当用户创建 Backup CR 时:
+#     1. 创建一个 CronJob，按 schedule 定期执行
+#     2. CronJob 启动 Pod，运行备份脚本
+#     3. 备份完成后更新 Backup CR 的 status
+#   - 当用户删除 Backup CR 时:
+#     1. 清理对应的 CronJob 和历史备份
+#
+# 这个 Controller 通常以 Deployment 的形式运行在 K8s 集群内
+# 如下方所示:
+
+# Operator Controller 通常以 Deployment 部署在集群中
+# 这里仅展示概念结构，不是实际可运行的 YAML
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backup-operator
+  namespace: operators
+  labels:
+    app: backup-operator
+    chapter: "09"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backup-operator
+  template:
+    metadata:
+      labels:
+        app: backup-operator
+    spec:
+      serviceAccountName: backup-operator-sa
+      containers:
+        - name: operator
+          # Operator 的容器镜像，包含 Controller 逻辑
+          # 通常用 Go + controller-runtime 框架编写
+          image: example/backup-operator:v0.1.0
+          env:
+            # Controller 需要知道它运行在哪个集群中
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+---
+# Operator 需要特定的 RBAC 权限才能 Watch 和操作 K8s 资源
+# 这是非常关键的安全配置
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: backup-operator-role
+  labels:
+    chapter: "09"
+rules:
+  # 需要 watch/create/update/delete Backup CR
+  - apiGroups: ["example.com"]
+    resources: ["backups"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # 需要操作 CronJob 来执行备份任务
+  - apiGroups: ["batch"]
+    resources: ["cronjobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # 需要操作 Pod 来监控备份任务状态
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]

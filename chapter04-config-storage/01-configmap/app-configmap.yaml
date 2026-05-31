@@ -1,0 +1,34 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  # ConfigMap 是命名空间级别的资源，只在所在 namespace 内可见
+data:
+  # 简单键值对：适合作为环境变量注入
+  LOG_LEVEL: "info"
+  APP_ENV: "production"
+  MAX_CONNECTIONS: "100"
+
+  # 多行内容：适合作为配置文件挂载
+  # 键名就是挂载后的文件名，值就是文件内容
+  app.properties: |
+    server.port=8080
+    database.host=mysql.default.svc.cluster.local
+    database.port=3306
+    database.name=myapp
+
+  nginx.conf: |
+    server {
+        listen 80;
+        server_name localhost;
+
+        location / {
+            root   /usr/share/nginx/html;
+            index  index.html index.htm;
+        }
+
+        location /health {
+            return 200 'OK';
+            add_header Content-Type text/plain;
+        }
+    }

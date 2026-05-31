@@ -1,0 +1,130 @@
+# GitHub Actions CI 流水线配置
+# 这是一个面向 Kubernetes 应用的完整 CI 流水线
+# 流程：代码检查 → 构建镜像 → 推送镜像 → 更新 K8s 清单
+
+name: CI Pipeline for Kubernetes App
+
+# 触发条件：当代码推送到 main 分支，或创建 Pull Request 时触发
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# env 块定义全局环境变量，避免在多个步骤中重复写相同的值
+env:
+  REGISTRY: ghcr.io                          # GitHub Container Registry 地址
+  IMAGE_NAME: ${{ github.repository }}       # 自动取仓库名，如 myorg/myapp
+  CLUSTER_NAME: my-kind-cluster              # kind 集群名称
+
+jobs:
+  # ---- 第一阶段：代码检查与测试 ----
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      # 检出代码：将仓库克隆到 Runner 上，是几乎所有 workflow 的第一步
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 代码静态检查：这里用 hadolint 检查 Dockerfile 的最佳实践
+      # 为什么检查 Dockerfile？不规范的 Dockerfile 会导致镜像臃肿、构建缓存失效
+      - name: Lint Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+
+      # 单元测试步骤：实际项目中替换为真实的测试命令
+      - name: Run tests
+        run: |
+          echo "Running unit tests..."
+          # 实际示例：
+          # python -m pytest tests/
+          # go test ./...
+          echo "All tests passed!"
+
+  # ---- 第二阶段：构建和推送镜像 ----
+  # needs 表示依赖关系：必须在 lint-and-test 完成后才执行
+  build-and-push:
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    # 权限设置：GitHub Actions 需要显式声明权限（最小权限原则）
+    permissions:
+      contents: read       # 读取仓库内容
+      packages: write      # 推送镜像到 ghcr.io
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 登录 GitHub Container Registry
+      # GITHUB_TOKEN 是 Actions 自动提供的临时令牌，无需手动配置
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 提取 Docker 元数据（标签和标注）
+      # 自动生成多个标签：分支名、Git SHA、PR 编号等
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            #Git commit 的短 SHA，如 abc1234
+            type=sha,prefix=
+            # 分支名标签，如 main
+            type=ref,event=branch
+            # 语义化版本标签（当 tag 触发时）
+            type=semver,pattern={{version}}
+
+      # 构建并推送 Docker 镜像
+      # 使用 Buildx 支持多平台构建（linux/amd64, linux/arm64）
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # 构建参数：将 Git SHA 注入镜像，方便追踪版本
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+
+  # ---- 第三阶段：更新 Kubernetes 清单 ----
+  # 这是 CI 和 GitOps 的桥梁：CI 更新 Git 中的清单 → GitOps 工具检测变更并部署
+  update-manifest:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    # 需要写权限来提交清单变更回仓库
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout manifest repository
+        uses: actions/checkout@v4
+        with:
+          # 如果 K8s 清单在单独的仓库中，这里指定仓库地址
+          # 实践中推荐将清单和应用代码放在不同仓库（关注点分离）
+          repository: myorg/k8s-manifests
+          token: ${{ secrets.PAT_TOKEN }}
+
+      # 使用 kustomize 编辑镜像引用
+      # kustomize edit set image 是声明式的——不直接修改原始 YAML，
+      # 而是修改 kustomization.yaml 中的 image 替换规则
+      - name: Update image tag in kustomization
+        run: |
+          # 将镜像标签设置为本次构建的 Git SHA
+          kustomize edit set image myapp=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      # 将清单变更提交回 Git 仓库
+      # 之后的 ArgoCD/Flux 会检测到这次提交，自动将变更同步到集群
+      - name: Commit and push manifest changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "chore: update image to sha-${{ github.sha }}"
+          git push

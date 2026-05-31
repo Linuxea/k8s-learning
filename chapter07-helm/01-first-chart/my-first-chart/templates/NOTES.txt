@@ -1,0 +1,26 @@
+Thank you for installing {{ .Chart.Name }}!
+
+Your release is named {{ .Release.Name }}.
+# .Release.Name 是 helm install 时指定的 release 名称
+
+To learn more about the release, try:
+
+  $ helm status {{ .Release.Name }}
+  $ helm get all {{ .Release.Name }}
+
+# 以下是访问服务的提示，根据 Service 类型不同给出不同说明
+{{- if eq .Values.service.type "ClusterIP" }}
+
+To access your service from within the cluster:
+
+  kubectl port-forward svc/{{ include "my-first-chart.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+
+Then visit: http://127.0.0.1:{{ .Values.service.port }}
+{{- else if eq .Values.service.type "NodePort" }}
+
+To access your service from outside the cluster:
+
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} services {{ include "my-first-chart.fullname" . }} -o jsonpath='{.spec.ports[0].nodePort}')
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath='{.items[0].status.addresses[0].address}')
+  echo "Visit: http://$NODE_IP:$NODE_PORT"
+{{- end }}

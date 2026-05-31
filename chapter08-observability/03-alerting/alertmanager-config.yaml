@@ -1,0 +1,134 @@
+# alertmanager-config.yaml
+# AlertmanagerConfig：配置 Alertmanager 的路由和通知方式
+# 使用 AlertmanagerConfig CRD（而非直接编辑 Secret）来管理配置
+# 这是 kube-prometheus-stack 推荐的声明式配置方式
+
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: default-alert-config
+  namespace: monitoring
+  labels:
+    # 此标签让 Alertmanager 选择并加载此配置
+    alertmanagerConfig: kube-prometheus-stack
+spec:
+  # 路由配置：定义告警如何分发
+  route:
+    # 默认接收者
+    receiver: webhook-default
+    # 分组依据：相同 alertname 和 namespace 的告警合并为一条通知
+    # 避免一次故障导致大量重复通知
+    groupBy:
+      - alertname
+      - namespace
+    # 新告警组等待多久发送第一条通知
+    # 30 秒的等待可以收集同一批次的告警
+    groupWait: 30s
+    # 已有告警组中新增告警的等待时间
+    groupInterval: 5m
+    # 重复发送通知的最小间隔
+    # 避免持续触发的告警频繁打扰
+    repeatInterval: 4h
+    # 子路由：根据 severity 分流
+    routes:
+      # Critical 级别的告警走更快的通道
+      - matchers:
+          - matchType: "="
+            name: severity
+            value: critical
+        receiver: webhook-critical
+        # Critical 告警更频繁地重复通知
+        repeatInterval: 15m
+        groupWait: 10s
+        groupInterval: 1m
+
+  # 抑制规则：高级别告警抑制低级别告警
+  # 避免同一问题同时发送多个级别不同的通知
+  inhibitRules:
+    - sourceMatchMatchers:
+        - matchType: "="
+          name: severity
+          value: critical
+      targetMatchMatchers:
+        - matchType: "="
+          name: severity
+          value: warning
+      # 只有 alertname 和 namespace 相同时才抑制
+      # 不同问题的告警不应该互相抑制
+      equal:
+        - alertname
+        - namespace
+
+  # 接收者定义
+  receivers:
+    # 默认 Webhook 接收者（用于学习和测试）
+    # 生产环境应替换为实际的 Slack/Email/PagerDuty 配置
+    - name: webhook-default
+      webhookConfigs:
+        - url: "http://alertmanager-webhook:8080/alerts"
+          # 发送告警恢复通知
+          sendResolved: true
+
+    # Critical 级别 Webhook 接收者
+    - name: webhook-critical
+      webhookConfigs:
+        - url: "http://alertmanager-webhook:8080/critical-alerts"
+          sendResolved: true
+
+---
+# 可选：部署一个简单的 Webhook 接收器用于测试
+# 它会打印收到的告警到日志中，方便观察告警通知
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alertmanager-webhook
+  namespace: monitoring
+  labels:
+    app: alertmanager-webhook
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alertmanager-webhook
+  template:
+    metadata:
+      labels:
+        app: alertmanager-webhook
+    spec:
+      containers:
+        - name: webhook
+          # 使用 busybox 模拟 Webhook 服务器
+          # 生产环境应使用实际的 Webhook 服务
+          image: busybox:1.36
+          command: ["sh", "-c"]
+          args:
+            - |
+              echo "Webhook receiver started on port 8080"
+              while true; do
+                echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK" | nc -l -p 8080 > /dev/null 2>&1
+                echo "$(date): Received alert notification"
+              done
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager-webhook
+  namespace: monitoring
+  labels:
+    app: alertmanager-webhook
+spec:
+  selector:
+    app: alertmanager-webhook
+  ports:
+    - port: 8080
+      targetPort: 8080

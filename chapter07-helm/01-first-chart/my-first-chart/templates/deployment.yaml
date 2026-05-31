@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "my-first-chart.fullname" . }}
+  # include 调用 _helpers.tpl 中定义的命名模板，生成符合 K8s 命名规范的名称
+  labels:
+    {{- include "my-first-chart.labels" . | nindent 4 }}
+    # nindent 4 = 先换行再缩进 4 空格；{{- }} 中的减号会吃掉前面的空白
+spec:
+  replicas: {{ .Values.replicaCount }}
+  # 引用 values.yaml 中的 replicaCount 值
+  selector:
+    matchLabels:
+      {{- include "my-first-chart.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "my-first-chart.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          # 直接引用 Chart.yaml 中的 name 字段
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.appVersion }}"
+          # 如果 image.tag 为空，则使用 Chart.appVersion 作为默认值
+          # | 是管道操作符，将左侧值传给右侧函数
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+            # toYaml 将 Go 的字典/列表转换为 YAML 格式字符串
+            # nindent 12 确保输出的 YAML 缩进正确
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      # with 块：当 nodeSelector 不为空时才渲染这段内容
+      # with 内的 . 变成了 with 的值（即 .Values.nodeSelector）
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

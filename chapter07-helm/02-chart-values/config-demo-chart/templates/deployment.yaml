@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "config-demo-chart.fullname" . }}
+  labels:
+    {{- include "config-demo-chart.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "config-demo-chart.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "config-demo-chart.selectorLabels" . | nindent 8 }}
+        # 额外标签：用 range 遍历 extraLabels 字典
+        {{- range $key, $val := .Values.extraLabels }}
+        {{ $key }}: {{ $val | quote }}
+        {{- end }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        # 将 ConfigMap 内容的 SHA256 哈希作为注解
+        # 当 ConfigMap 内容变化时，这个哈希也会变化
+        # 触发 Deployment 滚动更新，确保 Pod 拿到最新的 ConfigMap
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          # 从 ConfigMap 引入环境变量
+          envFrom:
+            - configMapRef:
+                name: {{ include "config-demo-chart.fullname" . }}-config
+          # 额外的环境变量（用 range 遍历列表）
+          {{- if .Values.extraEnv }}
+          env:
+            {{- range .Values.extraEnv }}
+            - name: {{ .name | quote }}
+              value: {{ .value | quote }}
+            {{- end }}
+          {{- end }}
+          resources:
+            {{- with .Values.resources }}
+            # with 块：作用域变为 .Values.resources
+            # 这里的 . 就是 .Values.resources
+            limits:
+              cpu: {{ .limits.cpu }}
+              memory: {{ .limits.memory }}
+            requests:
+              cpu: {{ .requests.cpu }}
+              memory: {{ .requests.memory }}
+            {{- end }}
+            # with 块结束，. 恢复为根上下文

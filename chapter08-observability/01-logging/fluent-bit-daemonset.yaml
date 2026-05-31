@@ -1,0 +1,192 @@
+# fluent-bit-daemonset.yaml
+# 最小化的 Fluent Bit DaemonSet，用于采集 Kubernetes 容器日志
+# Fluent Bit 是 C 语言编写的轻量级日志处理器，内存占用约 5MB
+# DaemonSet 确保集群中每个节点运行一个采集器实例
+
+---
+# ConfigMap：Fluent Bit 的配置文件
+# Fluent Bit 通过配置文件定义：输入源 → 解析器 → 输出目标
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-bit-config
+  namespace: kube-system
+  labels:
+    app: fluent-bit
+data:
+  # 主配置文件：引用下面的子配置
+  fluent-bit.conf: |
+    [SERVICE]
+        # 刷新间隔：每 1 秒检查一次数据
+        Flush         1
+        # 日志级别：info 级别足够日常使用
+        Log_Level     info
+        # 守护进程模式关闭（容器中不需要后台运行）
+        Daemon        off
+        # 解析器配置文件
+        Parsers_File  parsers.conf
+
+    [INPUT]
+        # 使用 tail 插件读取日志文件（类似 tail -f）
+        Name              tail
+        # 容器日志文件的路径模式
+        Path              /var/log/containers/*.log
+        # 多行日志解析（Docker json-file 格式）
+        Parser            docker
+        # 用文件记录已读取位置，重启后不会重复采集
+        DB                /var/log/flb_kube.db
+        # 标签：用于路由规则匹配
+        Tag               kube.*
+        # 合并连续的同一日志行（Kubernetes 日志可能被截断）
+        Mem_Buf_Limit     5MB
+        # 跳过长日志行
+        Skip_Long_Lines   On
+
+    [FILTER]
+        # Kubernetes 过滤器：为日志添加 Pod/Namespace/Container 元数据
+        Name                kubernetes
+        Match               kube.*
+        # 从 /var/log/containers/ 的文件名中解析 K8s 元数据
+        Kube_URL            https://kubernetes.default.svc:443
+        # 缓存已解析的 Pod 元数据，避免频繁调用 API Server
+        Kube_Tag_Prefix     kube.var.log.containers.
+        # 不合并日志（保持每行独立）
+        Merge_Log           On
+        # 保留原始日志字段
+        Keep_Log            Off
+        # K8s API 请求的标签
+        Labels              On
+        # K8s API 请求的注解
+        Annotations         On
+
+    [OUTPUT]
+        # 输出到标准输出（用于学习演示）
+        # 生产环境通常输出到 Elasticsearch、Loki 或 Kafka
+        Name              stdout
+        Match             *
+        # JSON 格式输出，便于阅读
+        Format            json_lines
+
+  # 解析器配置
+  parsers.conf: |
+    [PARSER]
+        # Docker json-file 日志格式解析器
+        # Docker/containerd 的 json-file 驱动每行输出一个 JSON 对象：
+        # {"log":"...","stream":"stdout","time":"..."}
+        Name        docker
+        Format      json
+        Time_Key    time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L
+        Time_Keep   On
+
+---
+# ServiceAccount：Fluent Bit 访问 K8s API 所需的身份
+# 用于查询 Pod 元数据（Namespace、Labels、Annotations）
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fluent-bit
+  namespace: kube-system
+  labels:
+    app: fluent-bit
+
+---
+# ClusterRole：定义 Fluent Bit 需要的权限
+# 只授予读取权限，遵循最小权限原则
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fluent-bit
+  labels:
+    app: fluent-bit
+rules:
+  # 需要读取 Pod 信息来为日志添加元数据
+  - apiGroups: [""]
+    resources:
+      - pods
+      - namespaces
+    verbs:
+      - get
+      - list
+      - watch
+
+---
+# ClusterRoleBinding：将角色绑定到 ServiceAccount
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: fluent-bit
+  labels:
+    app: fluent-bit
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: fluent-bit
+subjects:
+  - kind: ServiceAccount
+    name: fluent-bit
+    namespace: kube-system
+
+---
+# DaemonSet：确保每个节点运行一个 Fluent Bit Pod
+# 这是日志采集器的标准部署模式
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluent-bit
+  namespace: kube-system
+  labels:
+    app: fluent-bit
+spec:
+  selector:
+    matchLabels:
+      app: fluent-bit
+  template:
+    metadata:
+      labels:
+        app: fluent-bit
+    spec:
+      # 使用前面创建的 ServiceAccount
+      serviceAccountName: fluent-bit
+      tolerations:
+        # 允许调度到 control-plane 节点（也要采集它的日志）
+        - key: node-role.kubernetes.io/control-plane
+          effect: NoSchedule
+      containers:
+        - name: fluent-bit
+          image: fluent/fluent-bit:3.0
+          # 从 ConfigMap 挂载配置文件
+          volumeMounts:
+            # 挂载配置文件
+            - name: config
+              mountPath: /fluent-bit/etc/
+            # 挂载节点上的容器日志目录
+            # 这是日志采集的关键：Fluent Bit 需要读取宿主机的日志文件
+            - name: varlog
+              mountPath: /var/log
+              readOnly: true
+            # 挂载 containerd 的日志目录（符号链接目标）
+            # 没有这个挂载，通过软链接访问日志文件会失败
+            - name: varlibdockercontainers
+              mountPath: /var/lib/docker/containers
+              readOnly: true
+            # 挂载 Fluent Bit 的位置数据库（防止重启后重复采集）
+            - name: position-db
+              mountPath: /var/log/
+      volumes:
+        # ConfigMap 卷：包含 Fluent Bit 配置文件
+        - name: config
+          configMap:
+            name: fluent-bit-config
+        # HostPath 卷：映射宿主机的日志目录到容器内
+        # 这是 DaemonSet 采集日志的核心机制
+        - name: varlog
+          hostPath:
+            path: /var/log/
+        # 宿主机上 containerd 的数据目录
+        - name: varlibdockercontainers
+          hostPath:
+            path: /var/lib/docker/containers
+        # 使用 emptyDir 存储位置数据库（同 Pod 重启可保留）
+        - name: position-db
+          emptyDir: {}

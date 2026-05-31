@@ -1,0 +1,61 @@
+# nginx-deployment.yaml
+# 基础 Deployment：3 副本 nginx
+# 演示 Deployment 的核心功能：声明式副本管理、自愈、滚动更新
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+  labels:
+    app: nginx
+    chapter: "02"
+spec:
+  # 期望的 Pod 副本数量
+  # Deployment Controller 会持续确保运行中的 Pod 数量等于这个值
+  replicas: 3
+
+  # 标签选择器：告诉 Deployment "哪些 Pod 是我的"
+  # 必须和 template.metadata.labels 匹配，否则 K8s 会拒绝创建
+  selector:
+    matchLabels:
+      app: nginx
+
+  # 默认使用 RollingUpdate 策略
+  # 这里显式声明，方便理解和修改
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # 滚动更新时，允许超出 replicas 的 Pod 数量
+      # 25% 意味着 3 副本时最多 3 + ceil(3*0.25) = 4 个 Pod
+      maxSurge: 25%
+      # 滚动更新时，允许不可用的 Pod 数量
+      # 25% 意味着 3 副本时最少保持 3 - floor(3*0.25) = 2 个可用
+      maxUnavailable: 25%
+
+  # 保留的旧 ReplicaSet 数量，用于回滚
+  # 设为 0 则无法回滚
+  revisionHistoryLimit: 10
+
+  # Pod 就绪后至少等多少秒才认为它"可用"
+  # 设大一点可以避免有问题的版本过快上线
+  minReadySeconds: 5
+
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27
+          ports:
+            - containerPort: 80
+          # 资源请求和限制 — 生产环境强烈建议设置
+          # 防止 Pod 抢占过多资源，也帮助调度器做出更好的决策
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi

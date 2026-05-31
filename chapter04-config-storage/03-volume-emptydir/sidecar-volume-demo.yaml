@@ -1,0 +1,60 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sidecar-demo
+  labels:
+    app: sidecar-demo
+spec:
+  # 这是一个经典的 sidecar 模式演示：
+  # busybox 作为 sidecar 容器，定期生成 HTML 内容写入共享卷
+  # nginx 作为主容器，从共享卷读取内容并提供服务
+  # 两个容器共享同一个 emptyDir 卷，实现数据传递
+
+  volumes:
+    - name: shared-html
+      emptyDir:
+        # medium: ""    # 默认值，使用节点磁盘存储
+        # medium: "Memory"  # 使用 tmpfs（RAM 磁盘），速度快但消耗内存
+        # 如果需要极高的 I/O 性能且数据量不大，可以用 Memory 模式
+        # sizeLimit: 16Mi   # 可选：限制卷的大小
+
+  # initContainer：在主容器启动之前运行，用于初始化
+  # 这里用它生成初始的 index.html，确保 nginx 启动时就有内容可服务
+  initContainers:
+    - name: init-content
+      image: busybox:1.36
+      command: ["sh", "-c", "echo '<h1>Hello from initContainer!</h1><p>This page was generated during Pod initialization.</p>' > /work-dir/index.html"]
+      volumeMounts:
+        - name: shared-html
+          mountPath: /work-dir
+
+  containers:
+    # 主容器：nginx，提供 HTTP 服务
+    - name: nginx
+      image: nginx:1.27
+      ports:
+        - containerPort: 80
+      volumeMounts:
+        - name: shared-html
+          mountPath: /usr/share/nginx/html   # nginx 默认的静态文件目录
+          readOnly: true   # nginx 只需要读取
+
+    # Sidecar 容器：定期生成新的 HTML 内容
+    - name: content-generator
+      image: busybox:1.36
+      # 每隔 10 秒生成一个新的 index.html，包含当前时间戳
+      command:
+        - sh
+        - -c
+        - |
+          while true; do
+            echo "<h1>Hello from Sidecar!</h1>" > /work-dir/index.html
+            echo "<p>Generated at: $(date)</p>" >> /work-dir/index.html
+            echo "<p>Served by nginx from shared emptyDir volume.</p>" >> /work-dir/index.html
+            sleep 10
+          done
+      volumeMounts:
+        - name: shared-html
+          mountPath: /work-dir   # 和 nginx 挂载同一个卷
+
+  restartPolicy: Never

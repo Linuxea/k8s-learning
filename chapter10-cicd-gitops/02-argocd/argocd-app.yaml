@@ -1,0 +1,72 @@
+# ArgoCD Application CR：定义"哪个 Git 仓库的什么内容"部署到"集群的哪个位置"
+# 这是 ArgoCD 的核心资源，每个 Application 代表一个 GitOps 管理的工作负载
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: guestbook            # Application 名称
+  namespace: argocd           # 必须在 argocd 命名空间中
+  # finalizers 确保 ArgoCD 被删除时，相关集群资源也被清理
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  # project 定义此 Application 属于哪个项目（用于多租户隔离）
+  project: default
+
+  # source：定义从哪里获取 Kubernetes 清单
+  source:
+    # Git 仓库地址（这里使用 ArgoCD 官方示例仓库）
+    repoURL: https://github.com/argoproj/argocd-example-apps.git
+    # 分支、tag 或 commit hash
+    targetRevision: HEAD
+    # 仓库中的路径（相对于仓库根目录）
+    path: guestbook
+
+    # 可选：如果清单需要预处理，指定处理工具
+    # kustomize、helm、directory（纯 YAML 目录）
+    # directory:
+    #   recurse: true    # 递归处理子目录中的 YAML
+
+  # destination：定义部署到哪个集群的哪个命名空间
+  destination:
+    # 集群 API Server 地址
+    # https://kubernetes.default.svc = 当前集群（ArgoCD 所在集群）
+    server: https://kubernetes.default.svc
+    # 目标命名空间
+    namespace: guestbook
+
+  # syncPolicy：同步策略——ArgoCD 检测到 Git 变更时的行为
+  syncPolicy:
+    # 自动同步配置
+    automated:
+      # prune: true 表示自动删除 Git 中已移除的资源
+      # 警告：开启后会删除 Git 清单中不再存在的 K8s 资源！
+      prune: true
+      # selfHeal: true 表示自动修复手动修改造成的配置漂移
+      # 例如有人 kubectl scale 改了副本数，ArgoCD 会自动恢复
+      selfHeal: true
+      # allowEmpty: false 表示不允许同步空的应用（防止误删）
+      allowEmpty: false
+
+    # syncOptions 控制同步行为的具体选项
+    syncOptions:
+      # 自动创建目标命名空间（如果不存在）
+      - CreateNamespace=true
+      # 使用服务端端应用（Server-Side Apply），避免字段冲突
+      - ServerSideApply=true
+
+    # retry：同步失败时的重试策略
+    retry:
+      limit: 3                # 最多重试 3 次
+      backoff:
+        duration: 5s          # 初始等待 5 秒
+        factor: 2             # 每次等待时间翻倍（5s → 10s → 20s）
+        maxDuration: 3m       # 最长等待 3 分钟
+
+  # ignoreDifferences：忽略特定字段的差异（不视为漂移）
+  # 适用于某些字段由其他控制器管理的情况（如 HPA 修改的 replicas）
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas      # 忽略 Deployment 的 replicas 字段差异

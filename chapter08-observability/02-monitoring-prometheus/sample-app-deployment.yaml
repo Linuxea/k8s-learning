@@ -1,0 +1,87 @@
+# sample-app-deployment.yaml
+# 带有 Prometheus 指标暴露的示例应用部署
+# 使用 nginx + 一个 sidecar 容器模拟暴露 /metrics 端点的应用
+# 实际应用（如 Go/Java/Python 服务）通常会集成 Prometheus 客户端库原生暴露指标
+
+---
+# Deployment：示例应用
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sample-app
+  namespace: default
+  labels:
+    app: sample-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: sample-app
+  template:
+    metadata:
+      labels:
+        app: sample-app
+      annotations:
+        # Prometheus 抓取注解（如果没有 ServiceMonitor 时的备选方案）
+        # Prometheus 可以基于这些注解自动发现并抓取指标
+        # 但 ServiceMonitor 是更推荐的方式
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:alpine
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 64Mi
+        - name: metrics-sidecar
+          # 这个 busybox sidecar 模拟一个暴露 Prometheus 指标的端点
+          # 在真实场景中，这通常是应用自身集成的 metrics handler
+          image: busybox:1.36
+          command: ["sh", "-c"]
+          args:
+            - |
+              # 启动一个简单的 HTTP 服务器，返回模拟的 Prometheus 指标
+              while true; do
+                echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n# HELP sample_app_requests_total Total requests\n# TYPE sample_app_requests_total counter\nsample_app_requests_total{method=\"GET\",status=\"200\"} $((RANDOM % 1000 + 100))\n# HELP sample_app_cpu_usage CPU usage percentage\n# TYPE sample_app_cpu_usage gauge\nsample_app_cpu_usage $(echo "scale=2; $RANDOM / 32767 * 100" | bc)\n# HELP sample_app_memory_bytes Memory usage in bytes\n# TYPE sample_app_memory_bytes gauge\nsample_app_memory_bytes $((RANDOM % 536870912 + 67108864))" | nc -l -p 8080 > /dev/null 2>&1;
+              done
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+
+---
+# Service：为示例应用创建 Service
+# ServiceMonitor 通过这个 Service 发现后端的 Pod
+apiVersion: v1
+kind: Service
+metadata:
+  name: sample-app
+  namespace: default
+  labels:
+    app: sample-app
+    # 这个标签会被 ServiceMonitor 的 selector 匹配
+    release: kube-prometheus-stack
+spec:
+  selector:
+    app: sample-app
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+    - name: metrics
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP

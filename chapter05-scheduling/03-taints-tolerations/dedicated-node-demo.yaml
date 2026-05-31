@@ -1,0 +1,50 @@
+# ============================================================
+# 专用节点场景演示：模拟 GPU 节点
+# 只有带有匹配 toleration 的 Pod 才能调度到该节点
+# ============================================================
+---
+# 首先给节点打污点（通过 kubectl 命令）:
+# kubectl taint nodes k8s-learning-worker gpu=true:NoSchedule
+#
+# 取消污点:
+# kubectl taint nodes k8s-learning-worker gpu=true:NoSchedule-
+
+---
+# 这个 Pod 有 toleration，可以调度到 GPU 节点
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gpu-workload
+  labels:
+    app: gpu-task
+spec:
+  tolerations:
+    - key: "gpu"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+  # 同时使用 nodeSelector 确保调度到特定节点
+  # （实际场景中可能用节点亲和性代替）
+  nodeSelector:
+    hardware: gpu
+  containers:
+    - name: gpu-app
+      image: nginx:1.27
+      ports:
+        - containerPort: 80
+
+---
+# 这个 Pod 没有 toleration，不能调度到 GPU 节点
+apiVersion: v1
+kind: Pod
+metadata:
+  name: normal-workload
+  labels:
+    app: normal-task
+spec:
+  # 没有 toleration，调度器会避开有 gpu=true:NoSchedule 污点的节点
+  containers:
+    - name: normal-app
+      image: nginx:1.27
+      ports:
+        - containerPort: 80

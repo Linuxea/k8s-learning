@@ -1,0 +1,77 @@
+# prometheus-values.yaml
+# kube-prometheus-stack 的 Helm values 自定义配置
+# 这是生产级监控方案的最小化配置，适合学习和开发环境
+
+# -- Prometheus 配置 --
+prometheus:
+  prometheusSpec:
+    # 保留数据的时间，学习环境 2 天足够
+    # 生产环境通常设为 15d 或 30d，更长需要远程存储（如 Thanos）
+    retention: 2d
+    # PVC 大小，需要匹配保留时间和指标数量
+    # kind 集群存储有限，设为 5Gi
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+    # 资源请求和限制：监控组件本身也需要合理分配资源
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+
+# -- Grafana 配置 --
+grafana:
+  # 默认管理员密码（生产环境务必修改）
+  adminPassword: admin
+  # 持久化存储：保存仪表盘和数据源配置
+  persistence:
+    enabled: true
+    size: 2Gi
+  # 资源配置
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# -- Alertmanager 配置 --
+alertmanager:
+  alertmanagerSpec:
+    # 持久化存储：保存告警状态和静默规则
+    storage:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 1Gi
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+
+# -- Node Exporter 配置 --
+# Node Exporter 以 DaemonSet 运行，采集节点级别指标
+# CPU、内存、磁盘、网络等
+nodeExporter:
+  # kind 节点的 kubelet 已经内置了部分节点指标
+  # 但 Node Exporter 提供更丰富的硬件指标
+  enabled: true
+
+# -- kube-state-metrics 配置 --
+# 监听 K8s API，暴露集群级别的对象状态指标
+# 如：Deployment 副本数、Pod 状态、Job 完成情况等
+kubeStateMetrics:
+  enabled: true

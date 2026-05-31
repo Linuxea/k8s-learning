@@ -1,0 +1,59 @@
+# log-generator.yaml
+# 持续生成日志的 Deployment，用于演示 Kubernetes 日志功能
+# 使用 busybox 每 1 秒输出一条带时间戳的日志
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: log-generator
+  namespace: default
+  labels:
+    app: log-generator
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: log-generator
+  template:
+    metadata:
+      labels:
+        app: log-generator
+    spec:
+      containers:
+        - name: logger
+          # busybox 极其轻量，适合用于演示和调试
+          image: busybox:1.36
+          # 每 1 秒输出一条 JSON 格式的结构化日志到 stdout
+          # 使用 JSON 格式是为了演示结构化日志的实践
+          command: ["sh", "-c"]
+          args:
+            - |
+              while true; do
+                echo "{\"time\":\"$(date -Iseconds)\",\"level\":\"INFO\",\"msg\":\"heartbeat from $(hostname)\",\"count\":$(date +%s)}";
+                sleep 1;
+              done
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+---
+# Service：虽然日志生成器不需要被访问，但创建 Service 可以让
+# kubectl logs -l app=log-generator 更方便地选择所有副本
+apiVersion: v1
+kind: Service
+metadata:
+  name: log-generator
+  namespace: default
+  labels:
+    app: log-generator
+spec:
+  selector:
+    app: log-generator
+  ports:
+    - port: 80
+      targetPort: 80
+  # ClusterIP: None 表示这是一个 Headless Service
+  # 这里只是为了让 label selector 有对应的 Service 对象
+  clusterIP: None

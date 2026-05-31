@@ -1,0 +1,24 @@
+# Guaranteed QoS Pod
+# 条件：所有容器的 requests == limits（CPU + 内存）
+# 最高优先级，节点资源不足时最后被驱逐
+apiVersion: v1
+kind: Pod
+metadata:
+  name: guaranteed-pod
+  labels:
+    chapter: "05"
+    qos: guaranteed
+spec:
+  containers:
+    - name: app
+      image: nginx:1.27
+      ports:
+        - containerPort: 80
+      resources:
+        # Guaranteed 要求 requests 和 limits 完全相等
+        requests:
+          cpu: "200m"      # 200 millicores = 0.2 CPU
+          memory: "64Mi"   # 64 Mebibytes
+        limits:
+          cpu: "200m"      # 必须等于 requests.cpu
+          memory: "64Mi"   # 必须等于 requests.memory

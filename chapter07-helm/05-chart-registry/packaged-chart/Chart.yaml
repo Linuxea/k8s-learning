@@ -1,0 +1,18 @@
+apiVersion: v2
+name: packaged-chart
+description: 一个准备打包发布的 Helm Chart 示例
+type: application
+version: 0.1.0
+# Chart 版本号，每次发布必须递增
+# 遵循 SemVer 2 格式：MAJOR.MINOR.PATCH
+appVersion: "1.27.0"
+# 包含的应用（nginx）版本号
+maintainers:
+  - name: linuxea
+    email: linuxea@example.com
+# 维护者信息，发布到公开仓库时很重要
+home: https://github.com/example/packaged-chart
+# 项目主页 URL
+sources:
+  - https://github.com/example/packaged-chart
+# 源代码仓库 URL，方便用户反馈问题

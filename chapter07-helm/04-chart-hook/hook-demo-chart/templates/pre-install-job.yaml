@@ -1,0 +1,56 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "hook-demo-chart.fullname" . }}-pre-install
+  annotations:
+    # --- Hook 核心注解 ---
+    "helm.sh/hook": pre-install
+    # pre-install：在 helm install 创建任何资源之前执行此 Job
+    # 此时 Deployment、Service 等资源还未创建
+
+    "helm.sh/hook-weight": "-5"
+    # 权重为 -5，如果有多个 pre-install Hook，数值小的先执行
+    # 如果没有多个 Hook，这个字段可以省略
+
+    "helm.sh/hook-delete-policy": hook-succeeded,hook-failed
+    # 无论成功还是失败，执行完毕后都自动删除此 Job
+    # 好处：不会在集群中留下大量已完成的 Job 资源
+  labels:
+    {{- include "hook-demo-chart.labels" . | nindent 4 }}
+    app.kubernetes.io/component: hook
+spec:
+  # Job 成功需要完成的 Pod 数量
+  completions: 1
+  # 最多尝试次数，防止无限重试
+  backoffLimit: 3
+  # Job 超时时间（秒），超时后标记为失败
+  activeDeadlineSeconds: 60
+  template:
+    metadata:
+      name: {{ include "hook-demo-chart.fullname" . }}-pre-install
+    spec:
+      restartPolicy: Never
+      # Job 的 Pod 失败时不要重启（由 backoffLimit 控制重试）
+      containers:
+        - name: init
+          image: busybox:1.36
+          # 使用轻量级 busybox 镜像执行初始化任务
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "=== Pre-Install Hook ==="
+              echo "Release: {{ .Release.Name }}"
+              echo "Namespace: {{ .Release.Namespace }}"
+              echo "Time: $(date)"
+              echo "Initializing application..."
+              # 模拟初始化工作：创建目录、等待依赖服务等
+              sleep 2
+              echo "Initialization complete!"
+          resources:
+            limits:
+              cpu: 50m
+              memory: 32Mi
+            requests:
+              cpu: 25m
+              memory: 16Mi

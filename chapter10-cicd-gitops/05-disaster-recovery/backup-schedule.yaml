@@ -1,0 +1,95 @@
+# Velero Schedule CR：定时自动备份
+# 类似 cron job，按计划自动创建 Velero Backup
+
+apiVersion: velero.io/v1
+kind: Schedule
+metadata:
+  name: daily-backup          # 定时任务名称
+  namespace: velero           # 必须在 velero 命名空间中
+spec:
+  # schedule：cron 表达式，格式为 "分 时 日 月 周"
+  # "0 2 * * *" = 每天凌晨 2 点
+  # 其他示例：
+  #   "0 */6 * * *"     = 每 6 小时
+  #   "0 2 * * 1-5"     = 工作日凌晨 2 点
+  #   "0 0 1 * *"       = 每月 1 号午夜
+  schedule: "0 2 * * *"
+
+  # template：备份模板，定义备份的内容
+  # 每次触发时，Velero 会根据这个模板创建一个 Backup 资源
+  template:
+    # includedNamespaces：要备份的命名空间列表
+    # 不指定则备份所有命名空间（集群级备份）
+    includedNamespaces:
+      - myapp-prod
+      - myapp-staging
+      - monitoring
+      - cert-manager
+
+    # excludedNamespaces：排除的命名空间（优先级高于 included）
+    # excludedNamespaces:
+    #   - kube-system
+    #   - kube-public
+    #   - velero
+
+    # includedResources：只备份这些类型的资源
+    # 不指定则备份所有类型
+    # includedResources:
+    #   - deployments
+    #   - services
+    #   - configmaps
+    #   - secrets
+    #   - persistentvolumeclaims
+
+    # labelSelector：按标签过滤要备份的资源
+    # labelSelector:
+    #   matchLabels:
+    #     app.kubernetes.io/part-of: myapp
+
+    # ttl：备份的保留时间（Time To Live）
+    # 超过 TTL 的备份会被 Velero 自动删除
+    # 720h = 30 天
+    ttl: 720h0m0s
+
+    # storageLocation：备份存储位置（BackupStorageLocation 的名称）
+    # 不指定则使用默认位置
+    # storageLocation: default
+
+    # volumeSnapshotLocations：PV 快照存储位置
+    # volumeSnapshotLocations:
+    #   - default
+
+    # hooks：备份前后执行的钩子
+    # 例如在备份前将数据库置于一致状态
+    hooks:
+      resources:
+        - name: backup-hook
+          includedNamespaces:
+            - myapp-prod
+          labelSelector:
+            matchLabels:
+              app: database
+          # pre 钩子：在备份前执行
+          # 例如：pg_dump、FLUSH TABLES WITH READ LOCK
+          pre:
+            - exec:
+                container: postgres
+                command:
+                  - /bin/bash
+                  - -c
+                  - pg_dump -U postgres mydb > /tmp/backup.sql
+                onError: Fail       # 失败时中止备份
+                timeout: 60s
+          # post 钩子：在备份后执行
+          post:
+            - exec:
+                container: postgres
+                command:
+                  - /bin/bash
+                  - -c
+                  - rm /tmp/backup.sql
+                onError: Continue    # 失败时继续（清理操作不需要中止）
+
+  # paused：是否暂停定时任务（不删除配置）
+  # 适合在维护窗口期间临时暂停
+  paused: false

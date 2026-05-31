@@ -1,0 +1,48 @@
+# pi-job.yaml
+# 单次 Job：计算圆周率
+# 最简单的 Job 示例 — 一个 Pod，运行到完成
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pi-calc
+  labels:
+    chapter: "02"
+spec:
+  # 失败后最多重试 4 次
+  # 超过后 Job 被标记为 Failed
+  backoffLimit: 4
+
+  # Job 最长运行时间（秒）
+  # 超过这个时间还没完成，所有 Pod 都会被终止
+  activeDeadlineSeconds: 120
+
+  # 完成后自动清理（K8s 1.23+ 稳定）
+  # 600 秒 = 10 分钟后自动删除此 Job 及其 Pod
+  ttlSecondsAfterFinished: 600
+
+  template:
+    spec:
+      # Job 的 restartPolicy 只能是 Never 或 OnFailure
+      # Never: 失败后创建新 Pod 重试（旧 Pod 保留，方便排查）
+      # OnFailure: 失败后在同一个 Pod 内重启容器
+      restartPolicy: Never
+      containers:
+        - name: pi
+          # 用 busybox 计算 pi（通过 awk）
+          image: busybox:1.36
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Calculating Pi..."
+              # 用 awk 的 atan2 函数计算 pi，输出到小数点后 100 位
+              awk 'BEGIN { printf "%.100f\n", 4*atan2(1,1) }'
+              echo "Done!"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi

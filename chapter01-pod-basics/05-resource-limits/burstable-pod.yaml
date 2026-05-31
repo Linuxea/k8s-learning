@@ -1,0 +1,24 @@
+# Burstable QoS Pod
+# 条件：至少设置了一个 requests 或 limits，但不满足 Guaranteed 的条件
+# 中等优先级，可以临时使用超出 requests 的资源
+apiVersion: v1
+kind: Pod
+metadata:
+  name: burstable-pod
+  labels:
+    chapter: "05"
+    qos: burstable
+spec:
+  containers:
+    - name: app
+      image: nginx:1.27
+      ports:
+        - containerPort: 80
+      resources:
+        # Burstable: requests < limits（或只设了其中一个）
+        requests:
+          cpu: "100m"      # 最少保证 0.1 CPU
+          memory: "32Mi"   # 最少保证 32Mi 内存
+        limits:
+          cpu: "500m"      # 最多用 0.5 CPU（超了被限速）
+          memory: "128Mi"  # 最多用 128Mi 内存（超了被 OOMKill）

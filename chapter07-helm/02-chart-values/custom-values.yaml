@@ -1,0 +1,53 @@
+# custom-values.yaml —— 覆盖 config-demo-chart 的默认配置
+# 用法: helm install my-app-prod ./config-demo-chart -f custom-values.yaml
+
+replicaCount: 3
+# 生产环境 3 副本
+
+image:
+  repository: nginx
+  pullPolicy: Always
+  # 使用 Always 策略，确保拉取最新镜像
+  tag: "1.27-alpine"
+  # 指定具体 tag，使用更小的 alpine 镜像
+
+# 覆盖应用配置
+appConfig:
+  greeting: "Hello from Production"
+  # 自定义问候语
+  maxRetries: "5"
+  # 生产环境增加重试次数
+  logLevel: "warn"
+  # 生产环境用 warn 级别减少日志量
+  features:
+    - "metrics"
+    - "healthz"
+    - "pprof"
+  # 生产环境启用 pprof 性能分析
+
+# 添加额外环境变量
+extraEnv:
+  - name: ENVIRONMENT
+    value: "production"
+  - name: LOG_FORMAT
+    value: "json"
+
+service:
+  type: NodePort
+  # 生产环境使用 NodePort 方便测试
+  port: 80
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 200m
+    memory: 128Mi
+# 生产环境给更多资源
+
+# 添加额外标签
+extraLabels:
+  team: "platform"
+  env: "production"
+  tier: "frontend"

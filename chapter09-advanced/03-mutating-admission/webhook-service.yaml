@@ -1,0 +1,81 @@
+# Webhook Service: 为 Mutating Webhook 提供访问入口
+# 这是一个概念性配置，展示 webhook 的部署架构
+#
+# 实际部署时，webhook 服务器需要：
+# 1. 一个 Deployment 运行 webhook 代码（Go/Python/任何语言）
+# 2. 一个 Service 暴露 webhook 端口
+# 3. TLS 证书（API Server 通过 HTTPS 调用 webhook）
+# 4. 对应的 MutatingWebhookConfiguration 引用这个 Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: label-webhook-service
+  namespace: webhook-demo
+  labels:
+    app: label-webhook
+    chapter: "09"
+spec:
+  # ClusterIP: 集群内部访问，API Server 通过这个 Service 调用 webhook
+  # 这也是为什么 webhook 必须有 TLS——因为 API Server 通过集群网络访问
+  type: ClusterIP
+  selector:
+    app: label-webhook
+  ports:
+    - name: https
+      port: 443
+      # webhook 容器实际监听的端口
+      targetPort: 8443
+      protocol: TCP
+---
+# webhook 服务器的 Deployment（概念性配置）
+# 实际的 webhook 容器镜像需要自己构建或使用开源项目
+# 例如：kyverno、OPA Gatekeeper 等策略引擎都提供了 webhook 功能
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: label-webhook
+  namespace: webhook-demo
+  labels:
+    app: label-webhook
+    chapter: "09"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: label-webhook
+  template:
+    metadata:
+      labels:
+        app: label-webhook
+    spec:
+      containers:
+        - name: webhook
+          # 这是一个概念性的镜像名称
+          # 实际部署时需要替换为真实的 webhook 服务器镜像
+          image: example/label-webhook:v0.1.0
+          ports:
+            - containerPort: 8443
+          # TLS 证书通常通过 Secret 挂载
+          # webhook 服务器用它来建立 HTTPS 连接
+          volumeMounts:
+            - name: tls-certs
+              mountPath: /tls
+              readOnly: true
+          env:
+            - name: TLS_CERT_FILE
+              value: "/tls/tls.crt"
+            - name: TLS_KEY_FILE
+              value: "/tls/tls.key"
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+      volumes:
+        - name: tls-certs
+          secret:
+            # Secret 中包含 TLS 证书和私钥
+            # 通常通过 cert-manager 或手动创建
+            secretName: label-webhook-tls

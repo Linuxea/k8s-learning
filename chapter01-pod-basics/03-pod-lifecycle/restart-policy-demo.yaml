@@ -1,0 +1,27 @@
+# restartPolicy 演示：Never 策略
+# 容器执行完命令后退出，因为 restartPolicy: Never，Pod 保持在 Completed 状态
+# 对比：如果改成 Always，容器会不断重启（因为每次执行完就退出）
+apiVersion: v1
+kind: Pod
+metadata:
+  name: restart-demo
+  labels:
+    chapter: "03"
+spec:
+  # Never: 容器退出后不重启，适合一次性任务
+  # 尝试改成 Always 或 OnFailure 观察不同行为
+  restartPolicy: Never
+
+  containers:
+    - name: task
+      image: busybox:1.36
+      # 执行一条命令然后退出（exit code 0）
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          echo "Task started at: $(date)"
+          echo "Simulating a one-time job..."
+          sleep 3
+          echo "Task completed at: $(date)"
+          # 退出码 0 = 成功，非 0 = 失败
+          # 尝试改成 exit 1 观察 Failed 状态

@@ -1,0 +1,44 @@
+# ArgoCD 安装参考
+# 这是一个参考文件，不要直接 apply 这个 YAML
+# ArgoCD 官方推荐直接使用远程 URL 安装
+
+# 安装命令（非 HA 模式，适合开发/学习）：
+# kubectl create namespace argocd
+# kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+# HA 模式（生产环境推荐，使用 Redis HA 和多个 controller 副本）：
+# kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/ha/install.yaml
+
+# 安装后需要检查的关键资源：
+# kubectl get pods -n argocd
+# kubectl get svc -n argocd
+# kubectl get crd | grep argoproj
+
+# 核心组件说明：
+# - argocd-application-controller: StatefulSet，负责协调 Git 状态与集群状态
+# - argocd-server: Deployment，提供 Web UI 和 API
+# - argocd-repo-server: Deployment，管理 Git 仓库连接和清单渲染
+# - argocd-redis: Deployment，缓存层
+# - argocd-dex-server: Deployment，SSO/OIDC 认证
+# - argocd-notifications-controller: Deployment，通知集成（Slack、邮件等）
+
+# 自定义安装：使用 Kustomize 覆盖默认配置
+# 下面是一个示例 kustomization（不直接使用）：
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 引用官方安装清单作为 base
+resources:
+  - https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+# 通过 patch 自定义配置，而不修改上游清单
+patches:
+  # 将 Service 类型改为 NodePort（方便在 kind 集群中访问）
+  - target:
+      kind: Service
+      name: argocd-server
+    patch: |
+      - op: replace
+        path: /spec/type
+        value: NodePort

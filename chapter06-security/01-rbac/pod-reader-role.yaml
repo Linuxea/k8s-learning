@@ -1,0 +1,17 @@
+# 定义一个命名空间级别的 Role，允许读取 Pod 资源
+# Role 是命名空间作用域的，只对 rbac-demo 命名空间生效
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pod-reader
+  namespace: rbac-demo
+rules:
+  # apiGroups: "" 表示核心 API 组（core API group）
+  # Pod、Service、ConfigMap 等基础资源都属于核心组
+  - apiGroups: [""]
+    # resources 指定此规则控制的资源类型（注意是复数形式）
+    resources: ["pods"]
+    # verbs 定义允许的操作：
+    # get  - 获取单个 Pod（kubectl get pod xxx）
+    # list - 列出所有 Pod（kubectl get pods）
+    verbs: ["get", "list"]

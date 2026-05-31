@@ -1,0 +1,24 @@
+# Backup 自定义资源实例
+# 用户创建这个 CR，Operator 的 Controller 检测到后会：
+# 1. 创建一个 CronJob，每天凌晨 2 点执行备份
+# 2. CronJob 启动的 Pod 会连接 my-db-service，执行 pg_dump/mysqldump
+# 3. 备份结果上传到指定的存储路径
+# 4. Controller 更新 Backup CR 的 status 字段
+apiVersion: example.com/v1alpha1
+kind: Backup
+metadata:
+  name: daily-db-backup
+  namespace: default
+  labels:
+    chapter: "09"
+spec:
+  # 要备份的数据库（对应集群内的一个 Service）
+  targetDatabase: my-db-service
+  # Cron 表达式：每天凌晨 2:00 执行
+  schedule: "0 2 * * *"
+  # 保留最近 14 天的备份
+  retentionDays: 14
+  # 备份存储配置
+  storage:
+    type: s3
+    path: "s3://my-backup-bucket/database/daily"

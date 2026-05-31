@@ -1,0 +1,11 @@
+# 自定义 ServiceAccount
+# 为需要特定权限的应用创建专用身份，遵循最小权限原则
+# 避免 Pod 使用 default SA，防止权限过度授予
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: my-app-sa
+  namespace: sa-demo
+# automountServiceAccountToken 默认为 true
+# 如果应用不需要访问 K8s API，应设为 false 以减少攻击面
+# automountServiceAccountToken: false

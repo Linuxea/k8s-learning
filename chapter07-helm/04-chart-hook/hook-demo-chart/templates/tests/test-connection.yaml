@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "hook-demo-chart.fullname" . }}-test-connection"
+  annotations:
+    "helm.sh/hook": test
+    # test Hook：只在 helm test 时执行，不会在 install/upgrade 时触发
+    "helm.sh/hook-delete-policy": hook-succeeded
+    # 测试成功后自动删除 Pod，失败时保留以便排查
+  labels:
+    {{- include "hook-demo-chart.labels" . | nindent 4 }}
+    app.kubernetes.io/component: test
+spec:
+  containers:
+    - name: wget
+      image: busybox:1.36
+      # 用 busybox 的 wget 发起 HTTP 请求验证服务可达
+      command: ['wget']
+      args:
+        - '--spider'
+        # --spider：只检查 URL 是否可达，不下载内容
+        - '--timeout=30'
+        # 超时时间 30 秒
+        - 'http://{{ include "hook-demo-chart.fullname" . }}:{{ .Values.service.port }}/'
+        # 目标地址：Chart 创建的 Service 的 ClusterIP 地址
+  restartPolicy: Never
+  # 测试 Pod 不需要重启

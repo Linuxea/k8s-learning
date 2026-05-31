@@ -1,0 +1,18 @@
+# RoleBinding 将 Subject（这里是一个 ServiceAccount）绑定到 Role
+# 相当于"授权"：让 pod-reader-sa 获得 pod-reader Role 中定义的权限
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pod-reader-binding
+  namespace: rbac-demo
+# subjects: 定义谁获得权限（可以有多个 subject）
+subjects:
+  - kind: ServiceAccount
+    name: pod-reader-sa
+    namespace: rbac-demo
+# roleRef: 引用要绑定的 Role
+# 注意：roleRef 创建后不可修改，如需更换 Role 必须删除重建
+roleRef:
+  kind: Role
+  name: pod-reader
+  apiGroup: rbac.authorization.k8s.io

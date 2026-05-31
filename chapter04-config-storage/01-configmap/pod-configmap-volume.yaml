@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: configmap-volume-demo
+  labels:
+    app: config-demo
+spec:
+  containers:
+    - name: nginx
+      image: nginx:1.27
+      volumeMounts:
+        # 把 ConfigMap 挂载到 nginx 的配置目录
+        - name: config-volume
+          mountPath: /etc/nginx/conf.d/default.conf
+          # subPath: 只挂载 ConfigMap 中的特定键，而不是把整个目录替换掉
+          # 如果不用 subPath，ConfigMap 挂载会覆盖目标目录下的所有内容
+          subPath: nginx.conf
+          readOnly: true   # 配置文件通常不需要写入
+
+  volumes:
+    - name: config-volume
+      configMap:
+        name: app-config
+        # 可选：设置文件权限，默认是 0644
+        # defaultMode: 0644
+        # 可选：只挂载特定的键
+        # items:
+        #   - key: nginx.conf
+        #     path: default.conf
+        #     mode: 0644
+
+  restartPolicy: Never

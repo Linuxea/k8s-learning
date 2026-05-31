@@ -1,0 +1,48 @@
+# 容器生命周期钩子演示：postStart 和 preStop
+# postStart: 容器创建后立即执行，记录启动事件
+# preStop: 容器终止前执行，记录关闭事件（可用于优雅关闭）
+apiVersion: v1
+kind: Pod
+metadata:
+  name: lifecycle-demo
+  labels:
+    chapter: "03"
+spec:
+  containers:
+    - name: main-app
+      image: nginx:1.27
+      ports:
+        - containerPort: 80
+
+      # 生命周期钩子
+      lifecycle:
+        # postStart: 容器创建后立即执行
+        # 注意：不保证在容器 ENTRYPOINT 之前执行，两者是异步的
+        postStart:
+          exec:
+            command:
+              - /bin/sh
+              - -c
+              - |
+                echo "postStart hook executed at: $(date)" > /tmp/lifecycle.log
+                echo "Performing post-start initialization..." >> /tmp/lifecycle.log
+
+        # preStop: 容器终止前同步执行
+        # 执行完成后才会发送 SIGTERM 信号
+        # 注意：执行时间计入 terminationGracePeriodSeconds
+        preStop:
+          exec:
+            command:
+              - /bin/sh
+              - -c
+              - |
+                echo "preStop hook executed at: $(date)" >> /tmp/lifecycle.log
+                echo "Performing graceful shutdown..." >> /tmp/lifecycle.log
+                # 模拟优雅关闭（完成进行中的请求、通知负载均衡器等）
+                sleep 5
+                echo "Graceful shutdown completed." >> /tmp/lifecycle.log
+
+      # 优雅关闭超时时间（默认 30 秒）
+      # SIGTERM → 等待 30 秒 → SIGKILL
+      # 如果 preStop 执行了 10 秒，应用只剩 20 秒来做自己的清理
+      terminationGracePeriodSeconds: 30

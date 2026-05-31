@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: app-pvc
+  # PVC 是命名空间级别资源
+  # 只能在所在 namespace 内被 Pod 引用
+spec:
+  # 请求的存储大小
+  # PVC 会匹配 capacity >= 此值的 PV
+  resources:
+    requests:
+      storage: 512Mi   # 请求 512MB，会匹配到 1Gi 的 PV
+
+  accessModes:
+    - ReadWriteOnce    # 必须和 PV 的 accessModes 兼容
+
+  # 指定 StorageClass 来筛选 PV
+  # 如果不指定，会使用默认 StorageClass（如果有）
+  storageClassName: local-storage
+
+  # volumeName: local-pv  # 可选：直接指定要绑定的 PV 名字
+  # 通常让 Kubernetes 自动匹配即可

@@ -1,0 +1,53 @@
+# ValidatingWebhookConfiguration: 注册一个 Validating Admission Webhook
+# 与 Mutating Webhook 的区别：
+#   - Mutating: 可以修改对象（返回 JSONPatch）
+#   - Validating: 只能接受或拒绝（返回 allowed: true/false）
+#
+# Validation 在 Mutation 之后执行，看到的是"已被修改后"的最终对象
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: validate-resource-limits
+  labels:
+    chapter: "09"
+webhooks:
+  - name: validate-resource-limits.example.com
+    # webhook 服务端配置，与 Mutating Webhook 格式相同
+    clientConfig:
+      service:
+        name: policy-webhook-service
+        namespace: webhook-demo
+        port: 443
+        # webhook 的校验端点
+        path: /validate
+      # CA 证书（base64），用于验证 webhook 服务器的 TLS 证书
+      caBundle: ""
+    # 触发规则：监控 Pod 的创建和更新操作
+    rules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        resources: ["pods"]
+        # CREATE 和 UPDATE 都要校验
+        # 注意：DELETE 通常不需要校验 Pod 的资源限制
+        operations: ["CREATE", "UPDATE"]
+        scope: "Namespaced"
+    # 命名空间过滤：不在系统命名空间中生效
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - kube-system
+            - kube-public
+            - kube-node-lease
+    # 失败策略
+    # Fail = 如果 webhook 不可用，拒绝请求
+    # 对于安全策略，通常使用 Fail——宁可阻止创建，也不能放过不合规的 Pod
+    failurePolicy: Fail
+    # 超时设置
+    timeoutSeconds: 5
+    sideEffects: None
+    admissionReviewVersions: ["v1"]
+    # matchPolicy: Exact 表示 rules 必须完全匹配
+    # Equivalent 表示可以匹配等价的请求（如通过 Deployment 创建的 Pod）
+    matchPolicy: Equivalent

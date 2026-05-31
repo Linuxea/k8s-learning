@@ -1,0 +1,42 @@
+# nginx-replicaset.yaml
+# 基础 ReplicaSet：3 副本 nginx
+# 演示 ReplicaSet 的核心功能：副本数量管理、自愈
+
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: nginx-replicaset
+  labels:
+    app: nginx
+    chapter: "02"
+spec:
+  # 期望的副本数量
+  replicas: 3
+
+  # 标签选择器：通过标签找到"属于自己的"Pod
+  # 注意：selector 一旦创建就不可修改
+  selector:
+    matchLabels:
+      app: nginx
+      chapter: "02-rs"  # 加上 chapter 标签，避免和其他 Deployment/ReplicaSet 的 Pod 混淆
+
+  # Pod 模板：创建新 Pod 时使用的蓝图
+  # template.metadata.labels 必须包含 selector.matchLabels 中的所有标签
+  template:
+    metadata:
+      labels:
+        app: nginx
+        chapter: "02-rs"
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi

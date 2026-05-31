@@ -1,0 +1,85 @@
+# Flux 安装参考命令
+# Flux 推荐使用 CLI 安装，而不是直接 apply YAML 文件
+# 这个文件记录了完整的安装过程和参数说明
+
+# ============================================================
+# 前置条件检查
+# ============================================================
+# flux check --pre
+# 检查项：
+#   - Kubernetes 版本 >= 1.24
+#   - kubectl 可以连接到集群
+#   - 必要的 RBAC 权限
+
+# ============================================================
+# 方式一：flux install（不连接 Git，适合学习/测试）
+# ============================================================
+# flux install [flags]
+#
+# 常用 flags:
+#   --namespace flux-system    # 安装到的命名空间（默认 flux-system）
+#   --components-extra         # 额外安装的组件
+#     例如：--components-extra=image-reflector-controller,image-automation-controller
+#   --version                  # 指定 Flux 版本
+#   --registry                 # 镜像仓库（默认 ghcr.io/fluxcd）
+#   --toleration-keys          # 容忍键（用于特定节点调度）
+
+# 示例：安装 Flux 并启用镜像自动更新功能
+# flux install \
+#   --namespace=flux-system \
+#   --components-extra=image-reflector-controller,image-automation-controller \
+#   --version=v2.2.0
+
+# ============================================================
+# 方式二：flux bootstrap github（生产环境推荐）
+# ============================================================
+# flux bootstrap github [flags]
+#
+# 这个命令做两件事：
+# 1. 在集群中安装 Flux
+# 2. 在 GitHub 上创建/更新仓库，提交 Flux 自身配置
+#
+# 常用 flags:
+#   --owner          GitHub 用户名或组织名
+#   --repository     仓库名（不存在会自动创建）
+#   --branch         分支名（默认 main）
+#   --path           清单在仓库中的路径（支持多集群管理）
+#   --personal       使用个人账户
+#   --private        创建私有仓库
+#   --team           授予团队写权限
+
+# 示例：Bootstrap 到 GitHub 组织仓库
+# flux bootstrap github \
+#   --owner=my-github-org \
+#   --repository=flux-config \
+#   --branch=main \
+#   --path=./clusters/production \
+#   --team=platform-team
+
+# ============================================================
+# 方式三：flux bootstrap git（通用 Git 服务器）
+# ============================================================
+# 适用于 GitLab、Gitea 等非 GitHub 的 Git 服务器
+# flux bootstrap git [flags]
+#
+# 示例：
+# flux bootstrap git \
+#   --url=ssh://git@gitlab.com/myorg/flux-config.git \
+#   --branch=main \
+#   --path=./clusters/production \
+#   --ssh-key-algorithm=ed25519
+
+# ============================================================
+# 验证安装
+# ============================================================
+# flux check
+# 输出类似：
+# ► checking prerequisites
+# ✔ Kubernetes 1.28.3 >=1.24.0-0
+# ✔ prerequisites checks passed
+# ► checking controllers
+# ✔ helm-controller: deployment ready
+# ✔ kustomize-controller: deployment ready
+# ✔ notification-controller: deployment ready
+# ✔ source-controller: deployment ready
+# ► all checks passed

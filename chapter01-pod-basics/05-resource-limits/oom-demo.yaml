@@ -1,0 +1,34 @@
+# OOMKilled 演示：故意超过内存限制
+# 这个 Pod 的内存限制是 50Mi，但会尝试写入 100Mi 的数据
+# 预期行为：容器被 OOMKilled，Exit Code 137
+#
+# ⚠️ 如果在 macOS 上用 Docker Desktop / kind 运行，
+# 由于 cgroup 和 Linux 内核的差异，OOM 行为可能不完全一致。
+# 在真实的 Linux 节点上效果最准确。
+apiVersion: v1
+kind: Pod
+metadata:
+  name: oom-demo
+  labels:
+    chapter: "05"
+spec:
+  restartPolicy: Always  # OOM 后会自动重启，形成循环
+  containers:
+    - name: memory-hog
+      image: busybox:1.36
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          echo "Starting memory allocation test..."
+          echo "Memory limit: 50Mi"
+          echo "Will attempt to allocate ~100Mi..."
+          # dd 生成约 100MB 的数据写入内存文件系统
+          # 这会超过 50Mi 的内存限制 → OOMKilled
+          dd if=/dev/zero of=/tmp/bigfile bs=1M count=100
+          echo "If you see this, the OOM didn't trigger (unexpected)"
+          sleep 3600
+      resources:
+        requests:
+          memory: "32Mi"
+        limits:
+          memory: "50Mi"    # 限制 50Mi，但容器会尝试分配 100Mi → OOM

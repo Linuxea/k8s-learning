@@ -1,0 +1,23 @@
+# frontend Deployment：模拟前端服务
+# 标签 app=frontend 用于 NetworkPolicy 的 from 选择器
+# 实验中会验证只有 frontend 能访问 backend
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: netpol-demo
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - name: nginx
+          image: nginx
+          ports:
+            - containerPort: 80

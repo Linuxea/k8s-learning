@@ -1,0 +1,94 @@
+# grafana-values.yaml
+# 自定义 Grafana 配置的 Helm values
+# 用于覆盖 kube-prometheus-stack 中 Grafana 子 chart 的默认值
+# 使用方式：helm upgrade kube-prometheus-stack prometheus-community/kube-prometheus-stack -n monitoring -f grafana-values.yaml
+
+# -- Grafana 全局配置 --
+grafana:
+  # 管理员凭据
+  adminUser: admin
+  adminPassword: admin
+
+  # 持久化存储配置
+  persistence:
+    enabled: true
+    # 存储类（kind 默认使用 standard）
+    storageClassName: standard
+    size: 2Gi
+
+  # 资源配置
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+  # -- 仪表盘 sidecar 配置 --
+  # sidecar 容器负责从 ConfigMap/Secret 自动同步仪表盘
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: "default"
+          orgId: 1
+          folder: "Custom"
+          type: file
+          disableDeletion: false
+          # 允许在 UI 中修改从 ConfigMap 加载的仪表盘
+          editable: true
+          updateIntervalSeconds: 30
+          options:
+            path: /var/lib/grafana/dashboards/default
+            foldersFromFilesStructure: true
+
+  dashboards:
+    # 通过 Helm values 定义仪表盘（会创建对应的 ConfigMap）
+    # 另一种方式是直接创建带 grafana_dashboard: "1" 标签的 ConfigMap
+    default:
+      # 快速概览仪表盘
+      k8s-quick:
+        gnetId: 15760
+        revision: 1
+        datasource: Prometheus
+
+  # -- 数据源 sidecar 配置 --
+  # 自动从 Secret/ConfigMap 发现数据源配置
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: Prometheus
+          type: prometheus
+          url: http://kube-prometheus-stack-prometheus:9090
+          access: proxy
+          isDefault: true
+
+  # -- Grafana 插件 --
+  # 安装额外的 Grafana 插件
+  plugins:
+    - grafana-clock-panel       # 时钟面板
+    - grafana-piechart-panel    # 饼图面板
+
+  # -- 服务配置 --
+  service:
+    type: ClusterIP
+    port: 80
+
+  # -- 告警配置 --
+  # Grafana 自身的告警功能（与 Prometheus/Alertmanager 告警互补）
+  alerting:
+    contactpoints: []
+    policies: []
+    rules: []
+
+  # -- 安全配置 --
+  # 在生产环境中应启用以下配置
+  # ini:
+  #   security:
+  #     # 禁止匿名访问
+  #     allow_embedding: false
+  #   auth:
+  #     # 强制登录
+  #     disable_login_form: false

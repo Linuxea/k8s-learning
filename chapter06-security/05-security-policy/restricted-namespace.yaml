@@ -1,0 +1,19 @@
+# 带 Pod Security Admission 标签的命名空间
+# 通过标签在命名空间级别强制执行安全标准
+# 这种方式比 PSP 更简洁：不需要创建额外的资源，只需要命名空间标签
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: psa-demo
+  labels:
+    # enforce: 违反安全标准的 Pod 会被拒绝创建（最强模式）
+    pod-security.kubernetes.io/enforce: restricted
+    # audit: 违规的 Pod 可以创建，但会在审计日志中记录
+    # 适合在强制执行前先评估影响范围
+    pod-security.kubernetes.io/audit: restricted
+    # warn: 违规的 Pod 可以创建，但 kubectl 会输出警告信息
+    # 适合提醒开发者修复不符合标准的工作负载
+    pod-security.kubernetes.io/warn: restricted
+    # enforce-version: 指定安全标准的 K8s 版本
+    # 防止集群升级后标准自动变化导致意外行为
+    pod-security.kubernetes.io/enforce-version: latest

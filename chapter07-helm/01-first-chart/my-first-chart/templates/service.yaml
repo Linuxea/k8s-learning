@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "my-first-chart.fullname" . }}
+  labels:
+    {{- include "my-first-chart.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  # Service 类型来自 values.yaml
+  ports:
+    - port: {{ .Values.service.port }}
+      # Service 暴露的端口
+      targetPort: http
+      # 对应容器中名为 "http" 的端口（见 deployment.yaml 中的 containerPort name）
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "my-first-chart.selectorLabels" . | nindent 4 }}
+    # selector 必须和 Deployment 的 pod template labels 匹配
+    # 这样 Service 才能把流量转发到正确的 Pod

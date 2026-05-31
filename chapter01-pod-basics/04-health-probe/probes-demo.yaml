@@ -1,0 +1,49 @@
+# 健康探针完整演示：startupProbe + livenessProbe + readinessProbe
+# nginx 容器配置了三种探针，全部使用 HTTP GET 方式
+apiVersion: v1
+kind: Pod
+metadata:
+  name: probes-demo
+  labels:
+    chapter: "04"
+    app: probes-demo
+spec:
+  containers:
+    - name: nginx
+      image: nginx:1.27
+      ports:
+        - containerPort: 80
+
+      # 启动探针：给应用一个启动"豁免期"
+      # 在 startupProbe 成功之前，liveness 和 readiness 探针不会执行
+      # 这对启动慢的应用特别有用（如 Java、Python 应用）
+      startupProbe:
+        httpGet:
+          path: /
+          port: 80
+        failureThreshold: 30   # 允许失败 30 次
+        periodSeconds: 2       # 每 2 秒探测一次
+        # 最长等待: 30 × 2 = 60 秒启动时间
+
+      # 存活探针：检查容器是否还在正常运行
+      # 失败 → 容器被重启（不是 Pod 被删除，是容器重启）
+      livenessProbe:
+        httpGet:
+          path: /              # nginx 默认首页
+          port: 80
+        initialDelaySeconds: 0 # startupProbe 完成后才开始，所以这里设 0 即可
+        periodSeconds: 10      # 每 10 秒检查一次
+        timeoutSeconds: 5      # 超时 5 秒
+        failureThreshold: 3    # 连续失败 3 次才重启
+
+      # 就绪探针：检查容器是否准备好接收流量
+      # 失败 → 从 Service 的 Endpoints 中移除（不接收新流量，但不重启）
+      readinessProbe:
+        httpGet:
+          path: /
+          port: 80
+        initialDelaySeconds: 0
+        periodSeconds: 5       # 更频繁地检查，更快地感知状态变化
+        timeoutSeconds: 3
+        failureThreshold: 3
+        successThreshold: 1

@@ -1,0 +1,19 @@
+# 示例应用 Service：为 Deployment 暴露网络端点
+# ClusterIP 类型：集群内部可访问，外部需要通过 Ingress 或端口转发访问
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: guestbook-ui
+  labels:
+    app: guestbook-ui
+spec:
+  type: ClusterIP
+  selector:
+    # 通过标签选择器关联到 Deployment 创建的 Pod
+    app: guestbook-ui
+  ports:
+    - name: http
+      port: 80          # Service 暴露的端口
+      targetPort: 80    # Pod 容器监听的端口
+      protocol: TCP

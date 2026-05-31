@@ -1,0 +1,65 @@
+# Rollout 配套的 Service：用于流量分割
+# 金丝雀发布需要三个 Service 来实现流量分配
+
+---
+# stable Service：始终指向稳定版本的 Pod
+# 用户的主要流量通过这个 Service 访问应用
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-stable
+  labels:
+    app: myapp
+spec:
+  type: ClusterIP
+  selector:
+    # Argo Rollouts 会自动在 Pod 上添加 rollouts-pod-template-hash 标签
+    # 来区分 stable 和 canary Pod
+    app: myapp
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+
+---
+# canary Service：指向金丝雀版本的 Pod
+# 在金丝雀发布期间，这个 Service 指向新版本的 Pod
+# Argo Rollouts 通过修改 Service 的 selector 来实现流量分割
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-canary
+  labels:
+    app: myapp
+spec:
+  type: ClusterIP
+  selector:
+    app: myapp
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+
+---
+# 活跃 Service：用户实际访问的入口
+# Argo Rollouts 会在金丝雀发布时自动修改这个 Service 的 selector
+# 使得流量按比例分配到 stable 和 canary 的 Pod
+#
+# 工作原理：
+# - 发布前：selector 指向 stable ReplicaSet 的 Pod
+# - 发布中：Argo Rollouts 根据权重修改 selector，同时匹配 stable 和 canary
+# - 发布后：selector 指向新的 stable ReplicaSet
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-active
+  labels:
+    app: myapp
+spec:
+  type: ClusterIP
+  selector:
+    app: myapp
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80

@@ -1,0 +1,36 @@
+# webapp 的默认配置
+
+replicaCount: 2
+
+image:
+  repository: nginx
+  pullPolicy: IfNotPresent
+  tag: "1.27-alpine"
+
+service:
+  type: ClusterIP
+  port: 80
+
+resources:
+  limits:
+    cpu: 200m
+    memory: 128Mi
+  requests:
+    cpu: 100m
+    memory: 64Mi
+
+# Redis 子 Chart 的配置
+# 这里的 redis 键对应子 Chart 的名称（或 alias）
+redis:
+  enabled: true
+  # 是否安装 Redis 子 Chart
+  # condition: redis.enabled 会读取这个值
+  architecture: standalone
+  # Redis 部署模式：standalone（单机）或 replication（主从）
+  auth:
+    enabled: false
+    # 教学环境关闭认证，生产环境务必开启
+  master:
+    persistence:
+      enabled: false
+      # 教学环境关闭持久化，避免需要 PV

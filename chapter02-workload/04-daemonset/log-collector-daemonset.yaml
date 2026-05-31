@@ -1,0 +1,77 @@
+# log-collector-daemonset.yaml
+# DaemonSet 示例：模拟日志采集守护进程
+# 在每个节点上运行一个 Pod，用 busybox 模拟日志采集行为
+# 演示 DaemonSet 的核心特性：每个节点一个 Pod、节点选择、容忍度
+
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: log-collector
+  labels:
+    app: log-collector
+    chapter: "02"
+spec:
+  selector:
+    matchLabels:
+      app: log-collector
+
+  # 更新策略：滚动更新
+  # 逐个节点更新，每次最多 1 个节点的 Pod 不可用
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+
+  template:
+    metadata:
+      labels:
+        app: log-collector
+    spec:
+      # 容忍度：允许在 control-plane 节点上运行
+      # 默认情况下 control-plane 有 NoSchedule 污点
+      # 加上这个 toleration 后，日志采集器才能在所有节点运行
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/master
+          effect: NoSchedule
+
+      containers:
+        - name: log-collector
+          image: busybox:1.36
+          # 模拟日志采集：每 5 秒读取一次 /var/log 目录
+          # 实际生产中，Fluentd/Filebeat 会持续 tail 日志文件并转发到中心
+          command:
+            - /bin/sh
+            - -c
+            - |
+              NODE_NAME=$(hostname)
+              echo "[$(date)] Log collector started on node $NODE_NAME"
+              while true; do
+                ENTRY_COUNT=$(ls /var/log 2>/dev/null | wc -l)
+                echo "[$(date)] Collecting logs from /var/log on node $NODE_NAME (found $ENTRY_COUNT entries)"
+                sleep 10
+              done
+          # 挂载宿主机的 /var/log 目录到容器中
+          # 这样容器可以读取节点上的日志文件
+          # readOnly: true 防止容器意外修改宿主机日志
+          volumeMounts:
+            - name: varlog
+              mountPath: /var/log
+              readOnly: true
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 50m
+              memory: 64Mi
+
+      # hostPath 卷：将宿主机的目录挂载到容器中
+      # DaemonSet 经常需要访问宿主机文件系统
+      # /var/log — 节点日志目录
+      volumes:
+        - name: varlog
+          hostPath:
+            path: /var/log
+            type: DirectoryOrCreate  # 如果目录不存在则创建

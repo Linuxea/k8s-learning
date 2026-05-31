@@ -1,0 +1,23 @@
+# BestEffort QoS Pod
+# 条件：所有容器都没有设置 requests 和 limits
+# 最低优先级，可以使用节点上的空闲资源，但毫无保障
+# 节点资源不足时最先被驱逐
+apiVersion: v1
+kind: Pod
+metadata:
+  name: besteffort-pod
+  labels:
+    chapter: "05"
+    qos: besteffort
+spec:
+  containers:
+    - name: app
+      image: nginx:1.27
+      ports:
+        - containerPort: 80
+      # 没有设置 resources 字段 → BestEffort QoS
+      # 这意味着：
+      # - 调度器不知道这个 Pod 需要多少资源（盲调度）
+      # - 可以使用节点上所有可用资源
+      # - 节点紧张时第一个被驱逐
+      # 生产环境不建议这样做！

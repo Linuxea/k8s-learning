@@ -1,0 +1,68 @@
+# Flux Kustomization CR：定义"如何将 Git 源中的清单应用到集群"
+# 注意：这里的 Kustomization 是 Flux 的 CRD，不是 kustomize 工具的 kustomization.yaml
+# 两者名称相同但概念不同
+
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: myapp                # Kustomization 资源名称
+  namespace: flux-system      # 必须在 flux-system 命名空间中
+spec:
+  # sourceRef：引用 GitRepository 源（由 source-controller 管理）
+  # Flux 先拉取 Git 仓库，然后从指定路径读取清单
+  sourceRef:
+    kind: GitRepository
+    name: myapp               # 对应 GitRepository CR 的名称
+
+  # path：清单在 Git 仓库中的相对路径
+  # Flux 会在仓库的这个路径下寻找 Kustomize 或原始 YAML 文件
+  path: "./overlays/production"
+
+  # interval：协调间隔，Flux 每隔多久检查一次 Git 仓库是否有更新
+  interval: 5m
+
+  # retryInterval：失败后的重试间隔（比 interval 更短，加快恢复）
+  retryInterval: 1m
+
+  # timeout：单次协调操作的超时时间
+  timeout: 3m
+
+  # prune：是否删除 Git 中已移除的资源
+  # 类似 ArgoCD 的 prune 策略
+  prune: true
+
+  # validation：清单验证模式
+  # client = 客户端验证（不发送到 API Server）
+  # server = 服务端验证（发送 dry-run 请求到 API Server）
+  validation: client
+
+  # wait：是否等待所有资源就绪后才标记 Kustomization 为 Ready
+  wait: true
+
+  # healthChecks：健康检查——定义 Flux 认为部署"成功"的条件
+  # 只有这些资源都就绪，Kustomization 状态才会变为 Ready
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: myapp
+      namespace: myapp-prod
+
+  # patches：对清单进行补丁修改（不修改 Git 中的原始文件）
+  # 适合在不同环境中定制配置
+  patches:
+    # 设置目标命名空间（将所有资源放入指定命名空间）
+    - patch: |
+        apiVersion: v1
+        kind: {}
+        metadata:
+          namespace: myapp-prod
+      target:
+        # 不指定具体资源，应用于所有资源
+        labelSelector: "app=myapp"
+
+  # postBuild：构建后处理——替代 Kustomize 的变量替换
+  postBuild:
+    substitute:
+      # 环境变量替换，在清单中可以用 ${ENVIRONMENT} 引用
+      ENVIRONMENT: "production"
+      REPLICAS: "3"

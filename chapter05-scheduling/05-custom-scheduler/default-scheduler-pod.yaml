@@ -1,0 +1,23 @@
+# ============================================================
+# 显式指定默认调度器的 Pod
+# 通过 schedulerName 字段可以选择使用哪个调度器
+# 默认值是 "default-scheduler"（即 kube-scheduler）
+# ============================================================
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-default-scheduler
+  labels:
+    app: nginx
+    env: demo
+spec:
+  # schedulerName: 指定使用的调度器名称
+  # 默认调度器就是 "default-scheduler"
+  # 如果集群中安装了自定义调度器（如 my-scheduler），可以在此指定
+  # 如果指定的调度器不存在，Pod 会一直处于 Pending 状态
+  schedulerName: default-scheduler
+  containers:
+    - name: nginx
+      image: nginx:1.27
+      ports:
+        - containerPort: 80

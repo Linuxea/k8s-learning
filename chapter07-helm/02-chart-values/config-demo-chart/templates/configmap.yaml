@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "config-demo-chart.fullname" . }}-config
+  labels:
+    {{- include "config-demo-chart.labels" . | nindent 4 }}
+data:
+  # --- 基本值引用 ---
+  greeting: {{ .Values.appConfig.greeting | upper | quote }}
+  # 管道链式调用：取值 → 转大写 → 加引号
+  # 结果: "HELLO FROM HELM"
+
+  max_retries: {{ .Values.appConfig.maxRetries | quote }}
+  log_level: {{ .Values.appConfig.logLevel | default "info" | quote }}
+  # default 函数：如果 logLevel 为空，回退到 "info"
+
+  # --- range 遍历列表 ---
+  {{- range $index, $feature := .Values.appConfig.features }}
+  feature_{{ $index }}: {{ $feature | quote }}
+  # range 遍历列表，$index 是索引，$feature 是值
+  {{- end }}
+
+  # --- range 遍历字典 ---
+  {{- range $key, $val := .Values.extraLabels }}
+  {{ $key }}: {{ $val | quote }}
+  # range 遍历字典，$key 是键，$val 是值
+  {{- end }}
+
+  # --- 使用 .Files 对象读取 Chart 中的额外文件 ---
+  # 如果 Chart 中存在 files/ 目录，可以这样读取：
+  # {{ .Files.Get "files/extra.conf" | indent 2 }}
+
+  # --- 展示内置对象信息 ---
+  release_name: {{ .Release.Name | quote }}
+  # 当前 Release 的名称
+  chart_version: {{ .Chart.Version | quote }}
+  # Chart.yaml 中的 version 字段
+  namespace: {{ .Release.Namespace | quote }}
+  # Release 安装到的 namespace

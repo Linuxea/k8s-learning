@@ -1,0 +1,34 @@
+# sample-app-servicemonitor.yaml
+# ServiceMonitor：声明式地告诉 Prometheus 如何监控 sample-app
+# Prometheus Operator 会自动发现这个 ServiceMonitor 并生成 scrape 配置
+# 这是 Kubernetes 原生的监控配置方式，比手动修改 Prometheus 配置更安全、更自动化
+
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: sample-app
+  namespace: default
+  labels:
+    # 这个标签很重要：kube-prometheus-stack 默认只选择带有此标签的 ServiceMonitor
+    # 可以在 Helm values 中的 prometheus.prometheusSpec.serviceMonitorSelector 控制
+    release: kube-prometheus-stack
+spec:
+  # 选择哪些 Service：通过 label 匹配
+  selector:
+    matchLabels:
+      app: sample-app
+  # 在哪些命名空间中查找 Service
+  namespaceSelector:
+    any: false
+    matchNames:
+      - default
+  # 定义如何采集指标
+  endpoints:
+    - port: metrics          # Service 中定义的端口名（对应 sample-app Service 的 metrics 端口）
+      path: /metrics         # 指标暴露的 HTTP 路径（Prometheus 默认值）
+      interval: 15s          # 采集间隔：每 15 秒拉取一次
+      scrapeTimeout: 10s     # 单次采集超时时间
+  # 目标标签限制：限制从 K8s 标签中提取哪些标签
+  # 避免高基数标签（如 pod 名称）导致时间序列爆炸
+  targetLabels:
+    - app

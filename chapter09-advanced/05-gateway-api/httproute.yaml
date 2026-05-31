@@ -1,0 +1,133 @@
+# HTTPRoute: 定义 HTTP 流量的路由规则
+# HTTPRoute 由应用开发者管理，它定义了："把匹配这些规则的流量转发到我的服务"
+# 类比于 Nginx 的 location 配置块
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: example-route
+  namespace: gateway-demo
+  labels:
+    chapter: "09"
+spec:
+  # parentRefs 指定这个 Route 绑定到哪个 Gateway
+  # 这是 Route 和 Gateway 的连接点
+  parentRefs:
+    - name: example-gateway
+      # sectionName 指定绑定到 Gateway 的哪个 listener
+      # 这样一个 Gateway 的不同 listener 可以有不同的路由策略
+      sectionName: http
+  # hostnames 限制这个 Route 匹配的域名
+  # 支持 wildcard：*.example.com 匹配所有子域名
+  hostnames:
+    - "example.com"
+  # rules 定义路由规则，按顺序匹配
+  rules:
+    # 规则 1：路径前缀匹配 /api
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api
+          # 可以添加 header 匹配条件，实现更精细的路由
+          # headers:
+          #   - name: X-Version
+          #     value: "v2"
+      # filters 可以在路由层执行额外操作
+      # 例如：重定向、重写路径、添加 header
+      # filters:
+      #   - type: RequestHeaderModifier
+      #     requestHeaderModifier:
+      #       add:
+      #         - name: X-Gateway
+      #           value: "example-gateway"
+      backendRefs:
+        - name: api-service
+          port: 80
+          # weight 用于加权流量分配（金丝雀发布）
+          # 例如：90% 流量到 v1，10% 流量到 v2
+          weight: 90
+        # 金丝雀版本：接收 10% 的流量
+        - name: api-service-v2
+          port: 80
+          weight: 10
+    # 规则 2：默认匹配所有其他请求
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: web-service
+          port: 80
+---
+# 后端服务示例：web-service
+# 这是一个标准的 K8s Service，被 HTTPRoute 引用为后端
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-service
+  namespace: gateway-demo
+  labels:
+    app: web
+    chapter: "09"
+spec:
+  selector:
+    app: web
+  ports:
+    - port: 80
+      targetPort: 80
+---
+# 后端服务示例：api-service
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-service
+  namespace: gateway-demo
+  labels:
+    app: api
+    chapter: "09"
+spec:
+  selector:
+    app: api
+  ports:
+    - port: 80
+      targetPort: 80
+---
+# 后端服务示例：api-service-v2（金丝雀版本）
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-service-v2
+  namespace: gateway-demo
+  labels:
+    app: api-v2
+    chapter: "09"
+spec:
+  selector:
+    app: api-v2
+  ports:
+    - port: 80
+      targetPort: 80
+---
+# 测试用的工作负载
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-deploy
+  namespace: gateway-demo
+  labels:
+    app: web
+    chapter: "09"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27
+          ports:
+            - containerPort: 80

@@ -1,0 +1,52 @@
+# Liveness Probe 故意失败演示
+# 这个 Pod 会在启动约 30 秒后开始让 livenessProbe 失败
+# 你可以观察到 K8s 自动重启容器的过程
+#
+# 机制：
+# 1. 启动时创建 /tmp/healthy 文件
+# 2. livenessProbe 检查该文件是否存在
+# 3. 后台进程在 30 秒后删除该文件
+# 4. 探针连续失败 3 次 → 容器被重启
+# 5. 重启后文件重新创建，30 秒后又被删除 → 循环
+apiVersion: v1
+kind: Pod
+metadata:
+  name: liveness-fail
+  labels:
+    chapter: "04"
+spec:
+  containers:
+    - name: app
+      image: busybox:1.36
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          # 启动时创建健康标记文件
+          echo "Creating health marker file..."
+          touch /tmp/healthy
+
+          # 后台进程：30 秒后删除健康文件（模拟应用故障）
+          (
+            sleep 30
+            echo "Simulating failure: removing /tmp/healthy"
+            rm /tmp/healthy
+          ) &
+
+          # 主进程保持运行（不让容器退出）
+          echo "App is running. PID: $$"
+          while true; do
+            sleep 5
+            echo "App heartbeat at: $(date)"
+          done
+
+      # 存活探针：检查 /tmp/healthy 文件是否存在
+      livenessProbe:
+        exec:
+          command:
+            - cat
+            - /tmp/healthy
+        initialDelaySeconds: 5   # 给容器 5 秒启动时间
+        periodSeconds: 5         # 每 5 秒检查一次
+        failureThreshold: 3      # 连续失败 3 次 → 重启
+        # 从文件被删除到容器被重启: 5 × 3 = 15 秒
+        # 加上文件删除前的 30 秒: 总共约 45 秒后第一次重启

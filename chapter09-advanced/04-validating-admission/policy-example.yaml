@@ -1,0 +1,101 @@
+# 策略示例：强制要求所有 Pod 必须设置资源限制
+#
+# 这不是一个可部署的 K8s 资源，而是用 Pod YAML 展示
+# Validating Webhook 会检查什么、拒绝什么
+#
+# 在生产环境中，这类策略通常通过 OPA Gatekeeper 或 Kyverno 实现
+# 它们底层就是 ValidatingAdmissionWebhook
+
+# ✅ 合规的 Pod：设置了 resources.limits 和 requests
+apiVersion: v1
+kind: Pod
+metadata:
+  name: compliant-pod
+  labels:
+    chapter: "09"
+    # Validating Webhook 可以检查的合规标签
+    policy: "resource-limits-enforced"
+spec:
+  containers:
+    - name: nginx
+      image: nginx:1.27
+      ports:
+        - containerPort: 80
+      # 关键：设置了 resources，符合策略要求
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "128Mi"
+        limits:
+          cpu: "500m"
+          memory: "512Mi"
+---
+# ❌ 不合规的 Pod：没有设置 resources
+# Validating Webhook 会拒绝创建这个 Pod
+# kubectl apply 后会收到类似错误：
+#   Error from server: admission webhook "validate-resource-limits.example.com"
+#   denied the request: Pod "non-compliant-pod" must have resource limits set
+#   for all containers
+apiVersion: v1
+kind: Pod
+metadata:
+  name: non-compliant-pod
+  labels:
+    chapter: "09"
+spec:
+  containers:
+    - name: nginx
+      image: nginx:1.27
+      ports:
+        - containerPort: 80
+      # 没有 resources！会被 Validating Webhook 拒绝
+      # 这是生产环境中的常见问题：忘记设置资源限制
+      # 会导致 Pod 可以无限制地使用节点资源，影响其他工作负载
+---
+# ❌ 另一种不合规情况：只设置了 limits，没设置 requests
+# 虽然 K8s 会自动将 requests 设为等于 limits
+# 但某些团队的策略要求显式设置 requests，确保资源规划可预测
+apiVersion: v1
+kind: Pod
+metadata:
+  name: partial-compliant-pod
+  labels:
+    chapter: "09"
+spec:
+  containers:
+    - name: nginx
+      image: nginx:1.27
+      ports:
+        - containerPort: 80
+      resources:
+        limits:
+          cpu: "500m"
+          memory: "512Mi"
+        # requests 缺失，严格策略下可能被拒绝
+---
+# Validating Webhook 的 AdmissionResponse 示例
+# 当 Pod 不合规时，webhook 返回拒绝响应：
+#
+# {
+#   "apiVersion": "admission.k8s.io/v1",
+#   "kind": "AdmissionReview",
+#   "response": {
+#     "uid": "<请求的唯一ID>",
+#     "allowed": false,           ← 关键：拒绝请求
+#     "status": {
+#       "code": 403,
+#       "message": "Pod must have resource limits and requests set for all containers"
+#     }
+#   }
+# }
+#
+# 当 Pod 合规时：
+#
+# {
+#   "apiVersion": "admission.k8s.io/v1",
+#   "kind": "AdmissionReview",
+#   "response": {
+#     "uid": "<请求的唯一ID>",
+#     "allowed": true             ← 允许请求通过
+#   }
+# }

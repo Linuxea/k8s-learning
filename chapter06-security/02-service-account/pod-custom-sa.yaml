@@ -1,0 +1,16 @@
+# 使用自定义 ServiceAccount 的 Pod
+# 通过 spec.serviceAccountName 指定 Pod 使用的 SA
+# Pod 内进程将以 my-app-sa 的身份访问 Kubernetes API
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-app
+  namespace: sa-demo
+spec:
+  # 指定使用自定义 ServiceAccount（而非默认的 "default"）
+  serviceAccountName: my-app-sa
+  containers:
+    - name: nginx
+      image: nginx
+      ports:
+        - containerPort: 80

@@ -1,0 +1,37 @@
+# Kustomization 配置：K8s 部署清单的管理入口
+# kustomize 允许你声明式地定制 Kubernetes 资源，而无需修改原始 YAML 模板
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 命名空间：所有资源默认创建到这个命名空间
+# 为什么用命名空间？隔离不同环境（dev/staging/prod）的资源
+namespace: myapp-demo
+
+# 公共标签：为所有资源打上相同的标签，方便用 label selector 批量查询
+# kubectl get all -l app.kubernetes.io/part-of=myapp
+commonLabels:
+  app.kubernetes.io/name: myapp
+  app.kubernetes.io/part-of: myapp
+  app.kubernetes.io/managed-by: kustomize
+
+# 引用的资源列表：kustomize 会处理这些 YAML 文件
+# 实际项目中这里会列出 deployment.yaml、service.yaml 等
+resources:
+  - deployment.yaml
+  - service.yaml
+
+# 镜像替换：CI 流水线通过 `kustomize edit set image` 更新这里的值
+# 这就是 CI 和 GitOps 的连接点——CI 只改这一行，GitOps 负责部署
+images:
+  - name: myapp
+    newName: ghcr.io/myorg/myapp
+    newTag: v1.0.0   # CI 流水线会自动替换为新的 Git SHA
+
+# configMapGenerator：从文件或字面值生成 ConfigMap
+# 好处：内容变化时自动更新 ConfigMap 的哈希后缀，触发 Pod 滚动更新
+configMapGenerator:
+  - name: myapp-config
+    literals:
+      - LOG_LEVEL=info
+      - ENVIRONMENT=development

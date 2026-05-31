@@ -1,0 +1,46 @@
+# 符合 restricted 安全标准的 Pod
+# 满足 Pod Security Standards 的 restricted 级别所有要求：
+# 1. 非 root 运行（runAsNonRoot: true + runAsUser: 1000）
+# 2. 禁止特权提升（allowPrivilegeEscalation: false）
+# 3. 丢弃所有 Linux capabilities（drop: ["ALL"]）
+# 4. 使用 seccomp profile（由 Kubernetes 自动设置 RuntimeDefault）
+apiVersion: v1
+kind: Pod
+metadata:
+  name: compliant-pod
+spec:
+  securityContext:
+    # 必须以非 root 运行
+    runAsNonRoot: true
+    # 指定非 root 的 UID
+    runAsUser: 1000
+    # 指定进程的组 ID
+    runAsGroup: 1000
+  containers:
+    - name: nginx
+      image: nginx
+      ports:
+        - containerPort: 80
+      securityContext:
+        # 禁止特权提升（设置 no_new_privs）
+        allowPrivilegeEscalation: false
+        # 丢弃所有 Linux capabilities
+        # restricted 标准要求必须 drop ALL
+        capabilities:
+          drop:
+            - ALL
+        # 使用 seccomp RuntimeDefault profile
+        # 限制容器可以使用的系统调用
+        seccompProfile:
+          type: RuntimeDefault
+      # 根文件系统只读，nginx 需要挂载临时目录
+      volumeMounts:
+        - name: cache
+          mountPath: /var/cache/nginx
+        - name: run
+          mountPath: /var/run
+  volumes:
+    - name: cache
+      emptyDir: {}
+    - name: run
+      emptyDir: {}

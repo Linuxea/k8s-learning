@@ -1,0 +1,161 @@
+# jaeger-all-in-one.yaml
+# Jaeger All-in-One 部署：将所有 Jaeger 组件打包在一个 Pod 中
+# 适合学习和开发环境，不适合生产（数据存在内存中，重启即丢失）
+# Jaeger 是 CNCF 毕业项目，最流行的开源分布式追踪后端
+
+---
+# ServiceAccount：Jaeger 运行身份
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: jaeger
+  namespace: observability
+
+---
+# Service：Jaeger Agent - 接收 trace 数据的入口
+# 支持 Jaeger UDP 协议和 OTLP 协议
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-agent
+  namespace: observability
+  labels:
+    app: jaeger
+spec:
+  selector:
+    app: jaeger
+  ports:
+    # Jaeger UDP 端口（兼容旧版客户端）
+    - name: agent-compact
+      port: 6831
+      targetPort: 6831
+      protocol: UDP
+    - name: agent-binary
+      port: 6832
+      targetPort: 6832
+      protocol: UDP
+    # HTTP 端口用于健康检查和采样配置
+    - name: agent-sampling
+      port: 5778
+      targetPort: 5778
+      protocol: TCP
+  clusterIP: None
+
+---
+# Service：Jaeger Collector - 接收处理后的 trace 数据
+# 应用或 OpenTelemetry Collector 可以将数据发送到这里
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-collector
+  namespace: observability
+  labels:
+    app: jaeger
+spec:
+  selector:
+    app: jaeger
+  ports:
+    # OTLP gRPC 端口：OpenTelemetry SDK 推荐的发送协议
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4317
+    # OTLP HTTP 端口
+    - name: otlp-http
+      port: 4318
+      targetPort: 4318
+    # Jaeger 原生 gRPC 端口
+    - name: collector-grpc
+      port: 14250
+      targetPort: 14250
+
+---
+# Service：Jaeger Query - Web UI 和 API
+# 用于查询和可视化追踪数据
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-query
+  namespace: observability
+  labels:
+    app: jaeger
+spec:
+  selector:
+    app: jaeger
+  ports:
+    - name: query-http
+      port: 16686
+      targetPort: 16686
+  type: ClusterIP
+
+---
+# Deployment：Jaeger All-in-One
+# agent + collector + query 全部运行在一个容器中
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jaeger
+  namespace: observability
+  labels:
+    app: jaeger
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jaeger
+  template:
+    metadata:
+      labels:
+        app: jaeger
+    spec:
+      serviceAccountName: jaeger
+      containers:
+        - name: jaeger
+          # Jaeger 官方 All-in-One 镜像
+          # 包含 agent、collector、query 三个组件
+          image: jaegertracing/all-in-one:1.54
+          ports:
+            - containerPort: 5778
+            - containerPort: 6831
+              protocol: UDP
+            - containerPort: 6832
+              protocol: UDP
+            - containerPort: 16686
+            - containerPort: 4317
+            - containerPort: 4318
+            - containerPort: 14250
+          env:
+            # 日志级别
+            - name: LOG_LEVEL
+              value: "info"
+            # 内存存储模式（学习环境用，生产环境应使用 elasticsearch 或 badger）
+            - name: SPAN_STORAGE_TYPE
+              value: "memory"
+            # 内存中保存的最大 trace 数量
+            - name: MEMORY_MAX_TRACES
+              value: "10000"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 16686
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 16686
+            initialDelaySeconds: 15
+            periodSeconds: 30
+
+---
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability

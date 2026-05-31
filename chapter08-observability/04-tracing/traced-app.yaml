@@ -1,0 +1,123 @@
+# traced-app.yaml
+# 带有 OpenTelemetry 自动埋点的示例应用
+# 使用 nginx + busybox sidecar 模拟一个会被追踪的服务
+# 在真实场景中，应用会集成 OTel SDK（如 opentelemetry-go、opentelemetry-java）
+# 自动为 HTTP 请求创建 Span 并发送到 OTLP 端点
+
+---
+# ConfigMap：生成模拟的追踪数据脚本
+# 这个脚本模拟一个带有 trace context 的应用
+# 真实应用中，OpenTelemetry SDK 会自动处理这些
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: traced-app-config
+  namespace: observability
+data:
+  # 模拟一个简单 HTTP 服务，记录请求并输出 trace 信息
+  server.sh: |
+    #!/bin/sh
+    echo "Traced app started on port 8080"
+    echo "Sending traces to jaeger-collector:4317"
+
+    while true; do
+      # 接收 HTTP 请求
+      REQUEST=$(nc -l -p 8080 2>/dev/null)
+      
+      # 生成 trace 信息
+      TRACE_ID=$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')
+      SPAN_ID=$(head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \n')
+      TIMESTAMP=$(date +%s%N)
+      
+      # 输出追踪日志（模拟 OTel SDK 的行为）
+      echo "[$(date -Iseconds)] trace_id=$TRACE_ID span_id=$SPAN_ID op=HTTP.GET / path=/ status=200 duration=$((RANDOM % 100))ms"
+      
+      # 返回 HTTP 响应
+      echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nX-Trace-Id: $TRACE_ID\r\n\r\nHello from traced-app!\nTrace-ID: $TRACE_ID\nSpan-ID: $SPAN_ID" | nc -l -p 8080 > /dev/null 2>&1 &
+    done
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: traced-app
+  namespace: observability
+  labels:
+    app: traced-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: traced-app
+  template:
+    metadata:
+      labels:
+        app: traced-app
+      annotations:
+        # OpenTelemetry 自动埋点注解（如果集群中安装了 OTel Operator）
+        # OTel Operator 会自动注入 sidecar 并配置追踪
+        instrumentation.opentelemetry.io/inject-sdk: "true"
+        # 指定 OTel 导出到 Jaeger
+        instrumentation.opentelemetry.io/otel-exporter-otlp-endpoint: "http://jaeger-collector:4317"
+    spec:
+      containers:
+        - name: app
+          image: busybox:1.36
+          command: ["sh", "-c"]
+          args:
+            - |
+              # 模拟一个生成 trace 数据的 HTTP 服务
+              echo "Traced app (pod: $(hostname)) started on port 8080"
+              echo "OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger-collector:4317"
+              while true; do
+                TRACE_ID=$(cat /dev/urandom | tr -dc 'a-f0-9' | head -c 32)
+                SPAN_ID=$(cat /dev/urandom | tr -dc 'a-f0-9' | head -c 16)
+                BODY="Hello from $(hostname)!\nTrace-ID: ${TRACE_ID}\nSpan-ID: ${SPAN_ID}\nTimestamp: $(date -Iseconds)"
+                echo "$(date -Iseconds) | trace_id=${TRACE_ID} span_id=${SPAN_ID} | request processed"
+                echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nX-Trace-Id: ${TRACE_ID}\r\n\r\n${BODY}" | nc -l -p 8080 > /dev/null 2>&1
+              done
+          ports:
+            - containerPort: 8080
+          env:
+            # OpenTelemetry 标准环境变量
+            # 服务名称：在 Jaeger UI 中显示
+            - name: OTEL_SERVICE_NAME
+              value: "traced-app"
+            # OTLP 导出端点：指向 Jaeger Collector
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://jaeger-collector:4317"
+            # 导出协议
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "grpc"
+            # 采样率：100% 采样（学习和测试用，生产应设更低）
+            - name: OTEL_TRACES_SAMPLER
+              value: "always_on"
+            # 资源属性：附加到所有 Span 上的元数据
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "service.name=traced-app,service.version=1.0.0,deployment.environment=learning"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 64Mi
+
+---
+# Service：为 traced-app 创建 Service
+# 提供稳定的访问入口和负载均衡
+apiVersion: v1
+kind: Service
+metadata:
+  name: traced-app
+  namespace: observability
+  labels:
+    app: traced-app
+spec:
+  selector:
+    app: traced-app
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP

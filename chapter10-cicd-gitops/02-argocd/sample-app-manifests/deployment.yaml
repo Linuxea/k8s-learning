@@ -1,0 +1,48 @@
+# 示例应用 Deployment：ArgoCD 会将这个清单同步到集群
+# 这是 ArgoCD Git 仓库中应该存放的典型 Deployment YAML
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: guestbook-ui
+  labels:
+    app: guestbook-ui
+spec:
+  # 副本数：ArgoCD Self-heal 会守护这个值
+  replicas: 2
+  selector:
+    matchLabels:
+      app: guestbook-ui
+  template:
+    metadata:
+      labels:
+        app: guestbook-ui
+    spec:
+      containers:
+        - name: guestbook-ui
+          # 使用轻量级 nginx 镜像模拟前端应用
+          image: nginx:1.25-alpine
+          ports:
+            - containerPort: 80
+          # 资源限制：防止 Pod 占用过多资源影响其他工作负载
+          resources:
+            requests:
+              cpu: 50m       # 最低需要 0.05 个 CPU 核心
+              memory: 32Mi   # 最低需要 32MB 内存
+            limits:
+              cpu: 100m      # 最多使用 0.1 个 CPU 核心
+              memory: 64Mi   # 最多使用 64MB 内存
+          # 就绪探针：Pod 准备好接收流量后才会被加入 Service Endpoints
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          # 存活探针：检测到不健康时自动重启容器
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 15
+            periodSeconds: 20

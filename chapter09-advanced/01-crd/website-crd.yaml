@@ -1,0 +1,77 @@
+# CRD: 定义一个 "Website" 自定义资源
+# CRD 本身不是业务资源，它是一份"资源定义模板"
+# 告诉 K8s API Server："请帮我注册一种叫做 Website 的新资源类型"
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  # CRD 的名字必须是 <spec.names.plural>.<spec.group> 的格式
+  # 即 websites.example.com，K8s 会校验这个约束
+  name: websites.example.com
+spec:
+  # API 组名，类似于 Deployment 属于 apps 组，我们将 Website 归入 example.com 组
+  group: example.com
+  # 版本列表，CRD 支持多版本共存（比如 v1beta1 → v1 的平滑升级）
+  versions:
+    - name: v1alpha1
+      # 是否通过 API 提供 this 版本
+      served: true
+      # 是否作为存储版本（只有一个版本可以为 true，etcd 中实际存储的版本）
+      storage: true
+      schema:
+        # OpenAPI v3 Schema：定义自定义资源的字段类型和校验规则
+        # K8s API Server 会在创建/更新 CR 时自动校验这些约束
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                # 网站使用的容器镜像
+                image:
+                  type: string
+                  # pattern 约束镜像名格式，避免用户填入无效值
+                  pattern: "^[a-zA-Z0-9._:/-]+$"
+                # 副本数
+                replicas:
+                  type: integer
+                  minimum: 1
+                  maximum: 10
+                # 网站绑定的域名
+                host:
+                  type: string
+                  # 简单的域名格式校验
+                  pattern: "^[a-z0-9.-]+$"
+              # 必填字段列表：创建 Website 时必须提供这些字段
+              required:
+                - image
+                - replicas
+                - host
+      # additionalPrinterColumns 控制kubectl get websites时显示哪些列
+      additionalPrinterColumns:
+        - name: Host
+          type: string
+          # jsonPath 指定从 CR 的哪个字段取值
+          jsonPath: .spec.host
+        - name: Replicas
+          type: integer
+          jsonPath: .spec.replicas
+        - name: Image
+          type: string
+          jsonPath: .spec.image
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+  # scope 决定这个资源是命名空间级别还是集群级别
+  # Namespaced = 每个命名空间可以有同名的 Website
+  # Cluster = 全局唯一
+  scope: Namespaced
+  names:
+    # 复数形式，用于 API URL: /apis/example.com/v1alpha1/namespaces/<ns>/websites
+    plural: websites
+    # 单数形式，用于 CLI: kubectl get website
+    singular: website
+    # 资源类型简称，方便命令行使用
+    shortNames:
+      - web
+    # kind 是 YAML 中 kind 字段的值
+    kind: Website

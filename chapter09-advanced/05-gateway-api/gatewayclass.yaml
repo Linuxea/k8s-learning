@@ -1,0 +1,26 @@
+# GatewayClass: 定义网关的基础设施类型
+# 类比于 StorageClass 定义存储类型、IngressClass 定义 Ingress 类型
+# GatewayClass 由基础设施提供商（云厂商/平台团队）创建和维护
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: example-gateway-class
+  labels:
+    chapter: "09"
+spec:
+  # controllerName 标识哪个 Controller 负责处理这个 GatewayClass
+  # 格式遵循反向域名约定，如 acme.io/gateway-controller
+  # 不同的 Controller 实现会匹配自己的 controllerName
+  # 常见的 Controller 实现：
+  #   - Envoy Gateway: gateway.envoyproxy.io/gatewayclass-controller
+  #   - Istio: istio.io/gateway-controller
+  #   - Kong: konghq.com/gateway-controller
+  controllerName: example.com/gateway-controller
+  # 参数引用，可以传递特定于 Controller 的配置
+  # 不同的 Controller 实现可能需要不同的参数
+  # parametersRef:
+  #   group: ""
+  #   kind: ConfigMap
+  #   name: gateway-params
+  # description 是人类可读的说明，出现在 kubectl describe 中
+  description: "示例 GatewayClass，用于 Gateway API 学习"
