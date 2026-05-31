@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-# setup-server.sh — 在 Lightsail 上一键搭建 K8s 学习环境
+# setup-server.sh — 在 CVM 上一键搭建 K8s 学习环境
 #
 # 这个脚本设计为通过 SSH 管道执行:
 #   ssh -i <key.pem> ubuntu@<IP> 'bash -s' < scripts/setup-server.sh
@@ -141,5 +141,5 @@ echo "  集群节点:"
 kubectl get nodes -o wide
 echo ""
 echo "  下一步: 在本机运行以下命令连接集群"
-echo "    ./scripts/setup-local.sh < Lightsail 公网 IP>"
+echo "    ./scripts/setup-local.sh <CVM 公网 IP> <SSH密钥路径>"
 echo ""

@@ -2,9 +2,9 @@
 
 ## 本章目标
 
-在 AWS Lightsail 上搭建一个完整的 Kubernetes 学习环境：
+在腾讯云 CVM 上搭建一个完整的 Kubernetes 学习环境：
 
-- 一台 Lightsail VPS 作为宿主机
+- 一台竞价实例 CVM 作为宿主机（2 vCPU / 4GB RAM，按秒计费）
 - 用 kind 创建 3 节点 K8s 集群（1 control-plane + 2 worker）
 - 支持从本机远程操控集群
 - 安装 Ingress Controller，为后续章节做准备
@@ -12,24 +12,24 @@
 ## 架构概览
 
 ```
-你的本机                        AWS Lightsail VPS
-┌──────────────┐               ┌─────────────────────────────────────┐
-│              │   SSH         │  kind: k8s-learning                 │
-│  kubectl ────┼───────────────┼─► Docker                            │
-│              │   (kubeconfig)│  ┌─────────────────────────────┐    │
-│              │               │  │ K8s Cluster                 │    │
-│              │               │  │  ┌─ control-plane ──────┐  │    │
-│              │               │  │  │  kube-apiserver      │  │    │
-│              │               │  │  │  etcd                │  │    │
-│              │               │  │  └──────────────────────┘  │    │
-│              │               │  │  ┌─ worker-1 ───────────┐  │    │
-│              │               │  │  │  kubelet, kube-proxy │  │    │
-│              │               │  │  └──────────────────────┘  │    │
-│              │               │  │  ┌─ worker-2 ───────────┐  │    │
-│              │               │  │  │  kubelet, kube-proxy │  │    │
-│              │               │  │  └──────────────────────┘  │    │
-│              │               │  └─────────────────────────────┘    │
-└──────────────┘               └─────────────────────────────────────┘
+你的本机                          腾讯云 CVM (竞价实例)
+┌──────────────┐                 ┌─────────────────────────────────────┐
+│              │   SSH           │  kind: k8s-learning                 │
+│  kubectl ────┼─────────────────┼─► Docker                            │
+│              │   (kubeconfig)  │  ┌─────────────────────────────┐    │
+│              │                 │  │ K8s Cluster                 │    │
+│              │                 │  │  ┌─ control-plane ──────┐  │    │
+│              │                 │  │  │  kube-apiserver      │  │    │
+│              │                 │  │  │  etcd                │  │    │
+│              │                 │  │  └──────────────────────┘  │    │
+│              │                 │  │  ┌─ worker-1 ───────────┐  │    │
+│              │                 │  │  │  kubelet, kube-proxy │  │    │
+│              │                 │  │  └──────────────────────┘  │    │
+│              │                 │  │  ┌─ worker-2 ───────────┐  │    │
+│              │                 │  │  │  kubelet, kube-proxy │  │    │
+│              │                 │  │  └──────────────────────┘  │    │
+│              │                 │  └─────────────────────────────┘    │
+└──────────────┘                 └─────────────────────────────────────┘
 ```
 
 关键点：kind 的每个"节点"其实是一个 Docker 容器，里面跑了完整的 K8s 组件。
@@ -37,46 +37,82 @@
 
 ---
 
-## Step 1: 创建 Lightsail 实例
+## Step 1: 创建腾讯云 CVM 竞价实例
 
-### 1.1 规格选择
+### 1.1 为什么选腾讯云竞价实例
 
-| 方案 | 配置 | 月费 | 评价 |
-|------|------|------|------|
-| 最低配 | 512MB RAM, 1 vCPU | $5 | **不够用**，kind 集群都启动不了 |
-| 基础配 | 2GB RAM, 1 vCPU, 40GB SSD | $10 | 能跑但紧张，3 节点集群会比较卡 |
-| 推荐配 | 4GB RAM, 2 vCPU, 80GB SSD | $20 | 余量充足，体验流畅 |
-
-> 为什么需要这么多内存？kind 的每个节点都是一个 Docker 容器，
-> control-plane 节点要跑 etcd + apiserver + scheduler + controller-manager，
-> 3 个节点加起来就要 ~2GB，再加上宿主机系统本身的开销。
-
-### 1.2 创建步骤
-
-1. 登录 [AWS Lightsail 控制台](https://lightsail.aws.amazon.com/)
-2. 点击 **Create instance**
-3. 选择区域：
-   - 如果你在国内，选 **Asia Pacific (Tokyo)** 或 **Asia Pacific (Singapore)** 延迟较低
-   - 如果你在北美，选离你最近的 US 区域
-4. 选择 **Linux/Unix** → **OS Only** → **Ubuntu 24.04 LTS**
-5. 选择规格（建议 4GB RAM / $20 方案）
-6. 下载或选择 SSH 密钥（如果没有，Lightsail 会引导你创建）
-7. 给实例起个名字，比如 `k8s-learning`
-8. 点击 **Create instance**
-
-### 1.3 配置防火墙
-
-实例创建好后，进入 **Networking** 标签页，添加以下防火墙规则：
-
-| 端口 | 协议 | 用途 | 何时需要 |
+| 方案 | 配置 | 计费 | 大约成本 |
 |------|------|------|---------|
-| 22 | TCP | SSH | 必须，管理服务器 |
-| 80 | TCP | HTTP | 第三章 Ingress |
-| 443 | TCP | HTTPS | 第三章 Ingress |
-| 30000-32767 | TCP | NodePort 范围 | 第三章 Service |
+| 腾讯云竞价实例 | 2C4G, 50GB SSD | 按秒 | ~¥0.05-0.1/小时，每天学 2 小时约 ¥0.1-0.2 |
+| 腾讯云按量计费 | 2C4G, 50GB SSD | 按秒 | ~¥0.4-0.5/小时 |
+| AWS Lightsail | 4GB RAM | 固定月费 | $20/月（~¥145） |
 
-> Lightsail 默认只开了 22 和 80。其他端口需要手动添加。
-> 不用一次全加，用到时再加也可以。
+竞价实例的优势：
+- **极低成本**：按量计费的 3-20%，一个月学下来可能不到 ¥10
+- **用完即走**：不用了直接销毁，停止计费
+- **国内延迟低**：广州节点，从国内访问延迟 ~10-30ms
+
+竞价实例的劣势：
+- **可能被回收**：库存不足时系统会随机回收实例（实际很少发生）
+- **不适合跑重要服务**：但学习环境无所谓，被回收了用脚本几分钟重建
+
+> 不用担心被回收——我们准备了自动化脚本，重建整个集群只需要几分钟。
+
+### 1.2 安装 tccli（腾讯云 CLI）
+
+```bash
+# 安装
+pip install tccli
+
+# 配置密钥（需要先在腾讯云控制台创建 API 密钥）
+tccli configure
+# 按提示输入 SecretId、SecretKey、区域（ap-guangzhou）、输出格式（json）
+
+# 验证
+tccli cvm DescribeRegions
+```
+
+> 密钥获取：登录 [腾讯云控制台](https://console.cloud.tencent.com/) → 右上角 → 访问管理 → API 密钥管理 → 新建密钥
+
+### 1.3 用 tccli 创建竞价实例
+
+```bash
+# 查看广州可用区
+tccli cvm DescribeZones --region ap-guangzhou
+
+# 查询 Ubuntu 24.04 镜像 ID
+tccli cvm DescribeImages --region ap-guangzhou \
+  --Filters '[{"Name":"image-name","Values":["ubuntu 24"]}]'
+
+# 创建竞价实例
+tccli cvm RunInstances \
+  --InstanceChargeType SPOTPAID \
+  --InstanceMarketOptions '{"MarketType":"spot","SpotOptions":{"MaxPrice":"0.5","SpotInstanceType":"one-time"}}' \
+  --Placement '{"Zone":"ap-guangzhou-3"}' \
+  --InstanceType S5.MEDIUM4 \
+  --ImageId <镜像ID> \
+  --SystemDisk '{"DiskType":"CLOUD_SSD","DiskSize":50}' \
+  --InternetAccessible '{"InternetChargeType":"TRAFFIC_POSTPAID_BY_HOUR","InternetMaxBandwidthOut":10,"PublicIpAssigned":true}' \
+  --LoginSettings '{"KeyIds":["<你的SSH密钥ID>"]}' \
+  --SecurityGroupIds '["<安全组ID>"]' \
+  --InstanceName k8s-learning \
+  --HostName k8s-learning
+```
+
+> 也可以直接在 [腾讯云 CVM 控制台](https://console.cloud.tencent.com/cvm) 页面手动购买竞价实例，更直观。
+
+### 1.4 配置安全组（防火墙）
+
+在腾讯云控制台 → 安全组，添加以下入站规则：
+
+| 端口 | 协议 | 来源 | 用途 |
+|------|------|------|------|
+| 22 | TCP | 0.0.0.0/0 | SSH 登录 |
+| 80 | TCP | 0.0.0.0/0 | HTTP (Ingress) |
+| 443 | TCP | 0.0.0.0/0 | HTTPS (Ingress) |
+| 30000-32767 | TCP | 0.0.0.0/0 | NodePort 范围 |
+
+> 也可以用 tccli 操作安全组，但控制台操作更直观。安全组只需配置一次，后续重建实例可以复用同一个安全组。
 
 ---
 
@@ -85,16 +121,14 @@
 ### 2.1 连接到服务器
 
 ```bash
-# 修改密钥文件权限（如果还没改过）
-chmod 400 ~/Downloads/LightsailDefaultKey-<region>.pem
+# SSH 连接（使用密钥）
+ssh -i ~/.ssh/<你的密钥>.pem ubuntu@<公网IP>
 
-# SSH 连接
-ssh -i ~/Downloads/LightsailDefaultKey-<region>.pem ubuntu@<你的公网IP>
+# 或者使用密码（购买时设置的）
+ssh ubuntu@<公网IP>
 ```
 
-> `<你的公网IP>` 在 Lightsail 控制台的实例页面可以看到。
-
-也可以用 Lightsail 控制台自带的浏览器 SSH（点击实例旁边的终端图标），但本地终端体验更好。
+> 公网 IP 在腾讯云控制台 CVM 实例列表可以看到，或者用 `tccli cvm DescribeInstances` 查询。
 
 ### 2.2 系统更新
 
@@ -198,8 +232,8 @@ kind version
 你几乎所有的 K8s 操作都会通过它来完成。
 
 ```bash
-# 下载最新稳定版
-curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+# 下载指定版本（与 kind 集群的 K8s 版本保持一致）
+curl -LO "https://dl.k8s.io/release/v1.31.0/bin/linux/amd64/kubectl"
 
 # 赋予执行权限
 chmod +x kubectl
@@ -209,7 +243,7 @@ sudo mv kubectl /usr/local/bin/
 
 # 验证
 kubectl version --client
-# Client Version: v1.31.x
+# Client Version: v1.31.0
 ```
 
 ### kubectl 是怎么找到集群的？
@@ -228,7 +262,7 @@ kubectl 每次执行命令时，会按以下顺序查找配置：
 
 ### 6.1 编写集群配置
 
-将 `kind-cluster.yaml` 上传到 Lightsail 服务器（或直接在服务器上创建）：
+将 `kind-cluster.yaml` 上传到 CVM 服务器（或直接在服务器上创建）：
 
 ```bash
 cat > ~/kind-cluster.yaml << 'EOF'
@@ -252,6 +286,7 @@ nodes:
 
   # 第二个工作节点：可以练习多节点调度
   - role: worker
+EOF
 ```
 
 ### 6.2 创建集群
@@ -376,33 +411,33 @@ kubectl delete -f ~/verify-cluster.yaml
 
 ## Step 8: 配置本地 kubectl 远程连接
 
-这一步让你能在**自己电脑上**直接用 kubectl 操作远程 Lightsail 上的集群，
+这一步让你能在**自己电脑上**直接用 kubectl 操作远程 CVM 上的集群，
 这是更贴近真实工作场景的方式。
 
-### 8.1 在 Lightsail 上导出 kubeconfig
+### 8.1 在 CVM 上导出 kubeconfig
 
 ```bash
-# SSH 到 Lightsail 上执行
+# SSH 到 CVM 上执行
 kind get kubeconfig --name k8s-learning > ~/k8s-learning-kubeconfig.yaml
 ```
 
 ### 8.2 下载到本机
 
 ```bash
-# 在本机执行（不是在 Lightsail 上）
-scp -i <你的密钥.pem> ubuntu@<Lightsail公网IP>:~/k8s-learning-kubeconfig.yaml ~/.kube/k8s-learning-config
+# 在本机执行（不是在 CVM 上）
+scp -i <你的密钥.pem> ubuntu@<CVM公网IP>:~/k8s-learning-kubeconfig.yaml ~/.kube/k8s-learning-config
 ```
 
 ### 8.3 修改 server 地址
 
-kubeconfig 里的 server 地址默认是 `127.0.0.1`，需要改成 Lightsail 的公网 IP：
+kubeconfig 里的 server 地址默认是 `127.0.0.1`，需要改成 CVM 的公网 IP：
 
 ```bash
 # 在本机修改
-sed -i 's/127\.0\.0\.1/<你的Lightsail公网IP>/g' ~/.kube/k8s-learning-config
+sed -i 's/127\.0\.0\.1/<你的CVM公网IP>/g' ~/.kube/k8s-learning-config
 ```
 
-或者手动编辑 `~/.kube/k8s-learning-config`，把 `server: https://127.0.0.1:XXXXX` 改成 `server: https://<Lightsail公网IP>:XXXXX`。
+或者手动编辑 `~/.kube/k8s-learning-config`，把 `server: https://127.0.0.1:XXXXX` 改成 `server: https://<CVM公网IP>:XXXXX`。
 
 ### 8.4 使用
 
@@ -416,21 +451,19 @@ kubectl --kubeconfig ~/.kube/k8s-learning-config get nodes
 
 # 方式三：合并到默认 kubeconfig
 # 如果你已经有其他集群的配置，可以合并：
-kubectl config view --flatten > ~/.kube/config.tmp
-# 然后把新配置追加进去
-KUBECONFIG=~/.kube/config.tmp:~/.kube/k8s-learning-config kubectl config view --flatten > ~/.kube/config
-rm ~/.kube/config.tmp
+KUBECONFIG=~/.kube/config:~/.kube/k8s-learning-config kubectl config view --flatten > ~/.kube/config.tmp
+mv ~/.kube/config.tmp ~/.kube/config
 ```
 
 ### 8.5 验证
 
 ```bash
 kubectl get nodes
-# 应该能看到 3 个节点，和 SSH 到 Lightsail 上看到的一样
+# 应该能看到 3 个节点，和 SSH 到 CVM 上看到的一样
 ```
 
 > 如果连不上，检查：
-> 1. Lightsail 防火墙是否放行了 kubeconfig 中的端口（通常是 6443 或随机高端口）
+> 1. 腾讯云安全组是否放行了 kubeconfig 中的端口（通常是 6443 或随机高端口）
 > 2. kubeconfig 中的 IP 是否正确
 > 3. 用 `curl -k https://<IP>:<PORT>/livez` 测试 API 是否可达
 
@@ -459,7 +492,24 @@ kubectl get pods -n ingress-nginx
 安装完成后，端口映射链路是这样的：
 
 ```
-外部请求 → Lightsail公网IP:80 → Docker映射 → kind control-plane:80 → Ingress Controller → Pod
+外部请求 → CVM公网IP:80 → Docker映射 → kind control-plane:80 → Ingress Controller → Pod
+```
+
+---
+
+## 一键操作（用脚本）
+
+上面的 Step 3-9 已经封装成脚本，可以一键执行：
+
+```bash
+# Step 1: 创建 CVM（用 tccli 或控制台）
+./scripts/provision.sh
+
+# Step 2: 在 CVM 上搭建集群（通过 SSH 管道）
+ssh ubuntu@<公网IP> 'bash -s' < scripts/setup-server.sh
+
+# Step 3: 本地连接集群
+./scripts/setup-local.sh <公网IP> <SSH密钥路径>
 ```
 
 ---
@@ -497,9 +547,15 @@ kubectl get svc -A
 kubectl get all
 ```
 
-### Lightsail 管理
+### CVM 管理
 
 ```bash
+# 用 tccli 查看实例
+tccli cvm DescribeInstances --region ap-guangzhou
+
+# 用 tccli 销毁实例（停止计费）
+tccli cvm TerminateInstances --InstanceIds '["ins-xxx"]'
+
 # SSH 连接
 ssh -i <密钥.pem> ubuntu@<IP>
 
@@ -559,10 +615,10 @@ curl -k https://<IP>:<PORT>/livez
 # 2. 检查 kubeconfig 里的 IP 和端口
 cat ~/.kube/k8s-learning-config | grep server
 
-# 3. 检查 Lightsail 防火墙
-# 在 Lightsail 控制台 → Networking → 确认对应端口已放行
+# 3. 检查腾讯云安全组
+# 在腾讯云控制台 → 安全组 → 确认对应端口已放行
 
-# 4. 如果端口是随机高端口（如 38xyz），必须在防火墙里手动添加
+# 4. 如果端口是随机高端口（如 38xyz），必须在安全组里手动添加
 ```
 
 ### 问题：内存不足，Pod 一直 Pending
@@ -573,7 +629,17 @@ kubectl describe nodes | grep -A 5 "Allocated resources"
 
 # 如果确实不够，两个选择：
 # 1. 减少节点数（改 kind config 为单节点）
-# 2. 升级 Lightsail 规格
+# 2. 换更大规格的 CVM
+```
+
+### 问题：竞价实例被回收
+
+```bash
+# 竞价实例被系统回收后，数据会丢失
+# 处理方法：用脚本重新创建实例 + 重建集群
+./scripts/provision.sh                    # 重新创建实例
+ssh ubuntu@<新IP> 'bash -s' < scripts/setup-server.sh  # 重建集群
+./scripts/setup-local.sh <新IP> <密钥>    # 重新连接
 ```
 
 ---
@@ -581,13 +647,16 @@ kubectl describe nodes | grep -A 5 "Allocated resources"
 ## 清理（学完要销毁环境时）
 
 ```bash
-# 在 Lightsail 上删除 kind 集群
+# 在 CVM 上删除 kind 集群
 kind delete cluster --name k8s-learning
 
-# 在 Lightsail 控制台删除实例（停止计费）
-# 或用 AWS CLI：
-# aws lightsail delete-instance --instance-name k8s-learning
+# 用 tccli 销毁 CVM 实例（停止计费）
+tccli cvm TerminateInstances --InstanceIds '["ins-xxx"]'
+
+# 或在腾讯云控制台 → CVM → 选择实例 → 销毁/退还
 ```
+
+> 竞价实例按秒计费，销毁后立即停止扣费。安全组、SSH 密钥等配置可以保留，下次创建新实例时复用。
 
 ---
 

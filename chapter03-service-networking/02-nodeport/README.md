@@ -138,11 +138,11 @@ kubectl port-forward svc/nginx-nodeport-svc 8080:80
 curl http://localhost:8080
 ```
 
-如果你用的是云服务器（如 Chapter 00 中的 Lightsail），并且防火墙放行了 30080 端口：
+如果你用的是云服务器（如 Chapter 00 中的腾讯云 CVM），并且安全组放行了 30080 端口：
 
 ```bash
-# 从你本机直接访问（需要 Lightsail 的公网 IP）
-curl http://<Lightsail公网IP>:30080
+# 从你本机直接访问（需要 CVM 的公网 IP）
+curl http://<CVM公网IP>:30080
 
 # 看到 nginx 欢迎页就成功了
 ```

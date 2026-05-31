@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # ============================================================
-# setup-local.sh — 配置本地 kubectl 远程连接 Lightsail 上的集群
+# setup-local.sh — 配置本地 kubectl 远程连接 CVM 上的集群
 #
 # 用法:
-#   ./scripts/setup-local.sh <公网IP> <SSH密钥路径> [区域]
-#   ./scripts/setup-local.sh 12.34.56.78 ~/.ssh/lightsail_ap-northeast-1.pem
+#   ./scripts/setup-local.sh <公网IP> <SSH密钥路径>
+#   ./scripts/setup-local.sh 12.34.56.78 ~/.ssh/id_rsa
 #
 # 前置: setup-server.sh 已在服务器上执行完成
 # ============================================================
@@ -12,8 +12,7 @@
 set -euo pipefail
 
 PUBLIC_IP="${1:?用法: $0 <公网IP> <SSH密钥路径> [区域]}"
-SSH_KEY="${2:?用法: $0 <公网IP> <SSH密钥路径> [区域]}"
-REGION="${3:-ap-northeast-1}"
+SSH_KEY="${2:?用法: $0 <公网IP> <SSH密钥路径>}"
 CLUSTER_NAME="k8s-learning"
 KUBECONFIG_FILE="$HOME/.kube/k8s-learning-config"
 
@@ -38,7 +37,7 @@ echo ""
 echo ">>> [2/3] 替换 server 地址为公网 IP..."
 
 # kind 的 kubeconfig 里 server 地址是 127.0.0.1:PORT
-# 需要改成 Lightsail 公网 IP:PORT 才能从本机访问
+# 需要改成 CVM 公网 IP:PORT 才能从本机访问
 sed -i "s/127\.0\.0\.1/${PUBLIC_IP}/g" "${KUBECONFIG_FILE}"
 
 SERVER=$(grep 'server:' "${KUBECONFIG_FILE}" | head -1 | awk '{print $2}')
@@ -47,7 +46,7 @@ echo "  Server 地址: ${SERVER}"
 # 提取端口，提示用户确认防火墙
 PORT=$(echo "${SERVER}" | sed 's|.*:||')
 echo "  端口: ${PORT}"
-echo "  ⚠️  确保 Lightsail 防火墙已放行此端口（${PORT}/tcp）"
+echo "  ⚠️  确保腾讯云安全组已放行此端口（${PORT}/tcp）"
 
 # ---------- 3. 验证连接 ----------
 echo ""
@@ -62,7 +61,7 @@ else
     echo "  ❌ 连接失败"
     echo ""
     echo "  排查:"
-    echo "    1. 防火墙是否放行了端口 ${PORT}/tcp"
+    echo "    1. 腾讯云安全组是否放行了端口 ${PORT}/tcp"
     echo "    2. 测试连通: curl -k ${SERVER}/livez"
     echo "    3. 检查 IP: grep server ${KUBECONFIG_FILE}"
     exit 1

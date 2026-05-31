@@ -6,7 +6,7 @@
 
 | 章节 | 主题 | 内容概要 |
 |------|------|---------|
-| 00 | 环境搭建 | Lightsail + kind 集群创建、kubectl 配置、Ingress Controller 安装 |
+| 00 | 环境搭建 | 腾讯云 CVM 竞价实例 + kind 集群创建、kubectl 配置、Ingress Controller 安装 |
 | 01 | Pod 基础 | 第一个 Pod、多容器 Pod、生命周期、健康检查、资源限制 |
 | 02 | 工作负载 | Deployment、ReplicaSet、StatefulSet、DaemonSet、Job/CronJob |
 | 03 | 服务与网络 | ClusterIP、NodePort、LoadBalancer、Headless Service、Ingress |

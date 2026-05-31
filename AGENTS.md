@@ -12,19 +12,19 @@ chapterXX-<topic>/
     README.md          # Deep tutorial: concepts → field tables → step-by-step kubectl → 思考题
     *.yaml             # Runnable examples with Chinese comments
 scripts/
+  provision.sh        # tccli 创建 CVM 竞价实例
   setup-server.sh      # First-time: install Docker/kind/kubectl + create cluster + Ingress
-  setup-local.sh       # Local kubectl remote access to Lightsail cluster
-  rebuild-cluster.sh   # Destroy + recreate kind cluster (keep tools)
-  destroy-cluster.sh   # Destroy kind cluster only
+  setup-local.sh       # Local kubectl remote access to CVM cluster
 ```
 
-- Chapter 00 = environment setup (AWS Lightsail + kind 3-node cluster)
+- Chapter 00 = environment setup (腾讯云 CVM 竞价实例 + kind 3-node cluster)
 - Chapters 01-10 = learning content, each chapter is independent
 - Every README ends with thought questions (思考题) and nav link to next section
 
 ## Infrastructure
 
-- **VPS**: AWS Lightsail, 4GB RAM / 2 vCPU (ap-northeast-1 Tokyo recommended), Ubuntu 24.04
+- **VPS**: 腾讯云 CVM 竞价实例, 2 vCPU / 4GB RAM (ap-guangzhou), Ubuntu 24.04, 按秒计费
+- **CLI**: tccli (`tccli cvm RunInstances` / `TerminateInstances` 管理实例生命周期)
 - **Cluster**: kind (Kubernetes IN Docker), 3 nodes — 1 control-plane + 2 worker, K8s v1.31.0
 - **Ingress**: NGINX Ingress Controller (kind-specific manifest)
 - Kind cluster config: `chapter00-env-setup/kind-cluster.yaml` (port-mapped 80/443)
