@@ -121,7 +121,7 @@ cmd_create() {
     local image_id
     local img_raw
     img_raw=$(tccli cvm DescribeImages --region "${REGION}" \
-        --Filters '[{"Name":"image-name","Values":["Ubuntu 24.04"]},{"Name":"image-type","Values":["PUBLIC_IMAGE"]}]' \
+        --Filters '[{"Name":"image-name","Values":["Ubuntu Server 24.04 LTS 64"]},{"Name":"image-type","Values":["PUBLIC_IMAGE"]}]' \
         2>/dev/null || echo "{}")
     image_id=$(extract_json "$img_raw" "d['ImageSet'][0]['ImageId']")
 

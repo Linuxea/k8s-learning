@@ -107,10 +107,11 @@ for z in json.load(sys.stdin)['ZoneSet']:
     print(f\"{z['Zone']:20} {z['ZoneState']:10} {z.get('ZoneName','')}\")
 "
 
-# 查询 Ubuntu 24.04 镜像 ID
+# 查询腾讯云官方 Ubuntu 24.04 镜像 ID
+# 注意：filter 必须精确匹配官方镜像名，否则会匹配到第三方市场镜像（如 "OpenClaw on Ubuntu 24.04"）
 tccli cvm DescribeImages --region ap-guangzhou \
-  --Filters '[{"Name":"image-name","Values":["Ubuntu 24.04"]},{"Name":"image-type","Values":["PUBLIC_IMAGE"]}]' \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['ImageSet'][0]['ImageId'])"
+  --Filters '[{"Name":"image-name","Values":["Ubuntu Server 24.04 LTS 64"]},{"Name":"image-type","Values":["PUBLIC_IMAGE"]}]' \
+  | python3 -c "import sys,json; imgs=json.load(sys.stdin)['ImageSet']; [print(f\"{i['ImageId']}  {i['ImageName']}\") for i in imgs]"
 
 # 查询默认安全组 ID
 tccli vpc DescribeSecurityGroups --region ap-guangzhou \
