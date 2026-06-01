@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Kubernetes learning curriculum — 11 chapters (00-10), each with 5 sub-sections containing `README.md` + `.yaml` examples. All content is Chinese. No code, no build, no CI — pure documentation + YAML manifests.
+Kubernetes learning curriculum — chapters 01-10, each with 5 sub-sections containing `README.md` + `.yaml` examples. All content is Chinese. No code, no build, no CI — pure documentation + YAML manifests.
 
 ## Structure Convention
 
@@ -11,24 +11,16 @@ chapterXX-<topic>/
   0N-<subtopic>/
     README.md          # Deep tutorial: concepts → field tables → step-by-step kubectl → 思考题
     *.yaml             # Runnable examples with Chinese comments
-scripts/
-  provision.sh        # tccli 创建 CVM 竞价实例
-  setup-server.sh      # First-time: install Docker/kind/kubectl + create cluster + Ingress
-  setup-local.sh       # Local kubectl remote access to CVM cluster
 ```
 
-- Chapter 00 = environment setup (腾讯云 CVM 竞价实例 + kind 3-node cluster)
 - Chapters 01-10 = learning content, each chapter is independent
 - Every README ends with thought questions (思考题) and nav link to next section
 
-## Infrastructure
+## Environment
 
-- **VPS**: 腾讯云 CVM 竞价实例, 2 vCPU / 4GB RAM (ap-guangzhou), Ubuntu 24.04, 按秒计费
-- **CLI**: tccli (`tccli cvm RunInstances` / `TerminateInstances` 管理实例生命周期)
 - **Cluster**: kind (Kubernetes IN Docker), 3 nodes — 1 control-plane + 2 worker, K8s v1.31.0
 - **Ingress**: NGINX Ingress Controller (kind-specific manifest)
-- Kind cluster config: `chapter00-env-setup/kind-cluster.yaml` (port-mapped 80/443)
-- Scripts run on server via SSH pipe: `ssh ubuntu@IP 'bash -s' < scripts/setup-server.sh`
+- Environment setup is flexible — not tied to any specific cloud provider
 
 ## Writing Style
 
@@ -42,7 +34,6 @@ scripts/
 ## Key Files
 
 - `PROGRESS.md` — learning progress tracker; update status (`⬜ → 🔧 → ✅`) with dates after each section is practiced
-- `chapter00-env-setup/kind-cluster.yaml` — 3-node kind config (1 control-plane + 2 worker, port-mapped 80/443)
 
 ## Workflow
 
