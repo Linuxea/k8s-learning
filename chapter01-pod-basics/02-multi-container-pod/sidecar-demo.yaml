@@ -1,6 +1,10 @@
 # Sidecar 模式演示：nginx + busybox sidecar
 # Sidecar (busybox) 每 5 秒生成新的 index.html 到共享 Volume
 # 主容器 (nginx) 从同一个 Volume 读取并返回给用户
+#
+# 注意：此 Pod 有两个容器，kubectl logs 不指定 -c 时默认取第一个（nginx）
+# sidecar 容器的输出重定向到文件而非 stdout，所以 kubectl logs -c sidecar 为空
+# 验证 sidecar 在工作：重复执行 kubectl exec -c nginx -- curl localhost，看时间戳变化
 apiVersion: v1
 kind: Pod
 metadata:
@@ -12,6 +16,7 @@ spec:
   volumes:
     # emptyDir: Pod 创建时自动创建的临时目录，Pod 删除时消失
     # 两个容器都挂载这个 volume，实现文件共享
+    # 数据存在节点磁盘上，节点重启会丢失
     - name: shared-data
       emptyDir: {}
 
@@ -25,10 +30,12 @@ spec:
       ports:
         - containerPort: 80
 
-    # Sidecar 容器：busybox，负责定期生成网页内容
+    # Sidecar 容器：busybox (只有 /bin/sh，没有 /bin/bash)
+    # 负责定期生成网页内容到共享目录
     - name: sidecar
       image: busybox:1.36
       # 每 5 秒生成一个包含当前时间的 index.html
+      # 注意：echo > file 输出到文件，不会出现在 kubectl logs 中
       command: ["/bin/sh", "-c"]
       args:
         - |

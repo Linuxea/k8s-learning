@@ -1,10 +1,13 @@
 # Ambassador 模式演示：主容器通过 Ambassador 代理访问外部服务
-# 在真实场景中，Ambassador 通常是 Envoy/nginx 等代理
-# 这里用 busybox 模拟：Ambassador 容器监听端口，将请求转发到外部地址
 #
-# 这个示例中：
-# - main-app: 主应用，只知道 localhost:8888（不知道外部服务地址）
-# - ambassador: 代理容器，监听 8888 端口，把请求转发到真实后端
+# ⚠️ 免责声明：此 demo 仅验证"同 Pod 容器通过 localhost 通信"。
+# Ambassador 用 busybox httpd 返回静态文本，没有做真正的代理转发。
+# 真实场景中需替换为 nginx/Envoy/HAProxy 做反向代理。
+# Ambassador 模式的核心价值（解耦外部服务、协议转换、TLS 封装）本 demo 无法展示。
+#
+# 结构：
+# - main-app: 主应用，只知道 localhost:8888（不知道外部服务真实地址）
+# - ambassador: 监听 8888，返回模拟响应（真实场景中应转发至真实后端）
 apiVersion: v1
 kind: Pod
 metadata:
@@ -17,9 +20,7 @@ spec:
     # 主容器：模拟应用，通过 localhost:8888 访问"外部服务"
     - name: main-app
       image: busybox:1.36
-      # 主应用不知道真实后端地址，只访问 localhost:8888
-      # 这就是 Ambassador 模式的核心：主容器代码不需要处理服务发现
-      command: ["/bin/sh", "-c"]
+      command: ["/bin/sh", "-c"]          # busybox 只用 /bin/sh，没有 /bin/bash
       args:
         - |
           echo "Main app started. Accessing service via localhost:8888"
@@ -29,18 +30,15 @@ spec:
             sleep 10
           done
 
-    # Ambassador 容器：监听 8888 端口，代理到外部服务
-    # 这里用 busybox 的 httpd 模拟一个简单的代理行为
-    # 真实场景中会使用 Envoy、nginx、socat 等
+    # Ambassador 容器：监听 8888 端口
+    # 真实场景应用 nginx/Envoy 替换 busybox httpd，做真正的代理转发
     - name: ambassador
       image: busybox:1.36
       command: ["/bin/sh", "-c"]
       args:
         - |
           echo "Ambassador started. Listening on :8888"
-          # 用 busybox httpd 在 8888 端口提供简单响应
-          # 真实场景中，这里会把请求转发到真正的后端集群
-          echo "Ambassador proxied response from real-backend-service:6379" > /tmp/index.html
+          echo "Ambassador proxied response from real-backend:6379" > /tmp/index.html
           httpd -f -p 8888 -h /tmp
       ports:
         - containerPort: 8888

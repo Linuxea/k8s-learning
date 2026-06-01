@@ -154,7 +154,29 @@ kubectl exec sidecar-demo -c sidecar -- ls -la /work-dir
 
 两个容器看到的是同一组文件 — 这就是 `emptyDir` 的效果。
 
-### Step 5: 清理
+### Step 5: 验证 restartPolicy 对多容器的影响
+
+多容器 Pod 中 `restartPolicy`（默认 `Always`）对所有容器生效。一个容器崩溃不影响另一个，但 K8s 会自动重启崩溃的那个。
+
+> **注意**：无法从容器内部 `kill 1` 来触发重启——PID namespace 会拦截。正确的验证方式是用一个必定崩溃的容器。
+
+```bash
+# 创建一个必定崩溃的 Pod
+kubectl run crash-loop --image=busybox --restart=Always \
+    --command -- sh -c 'echo "crash!"; exit 1'
+
+# Watch RESTARTS 列的增长
+kubectl get pods -w
+# 你会看到: Error → CrashLoopBackOff，RESTARTS 不断增长
+# 指数退避: 10s → 20s → 40s → 80s → 160s → 上限 5min
+
+# 清理
+kubectl delete pod crash-loop
+```
+
+如果你保留了 sidecar-demo，两个容器独立运行：nginx 照常服务，sidecar 崩溃只会导致它自己进入重启循环，页面内容停止更新。
+
+### Step 6: 清理
 
 ```bash
 kubectl delete -f sidecar-demo.yaml
@@ -184,6 +206,60 @@ kubectl exec ambassador-demo -c main-app -- wget -qO- http://localhost:8888 2>/d
 
 ```bash
 kubectl delete -f ambassador-demo.yaml
+```
+
+## 常见困惑
+
+学习本节时学生常遇到以下问题，提前说明可以避免踩坑。
+
+### 1. `kubectl logs` 在多容器 Pod 中的默认行为
+
+如果 Pod 有多个容器，`kubectl logs` 不指定 `-c` 时，默认取第一个容器（按 YAML 定义顺序）。kubectl 会打印提示：
+
+```
+Defaulted container "nginx" out of: nginx, sidecar
+```
+
+**必须用 `-c` 指定容器名来分别查看日志。**
+
+### 2. busybox 没有 `/bin/bash`
+
+`busybox` 镜像只有 `/bin/sh`（ash），没有 bash。如果执行 `kubectl exec -it pod -c container -- /bin/bash` 会报错：
+
+```
+unable to start container process: exec: "/bin/bash": stat /bin/bash: no such file or directory
+```
+
+对于 busybox 容器，用 `/bin/sh` 或 `sh`。
+
+### 3. 容器内 kill PID 1 几乎无效
+
+容器的 PID 1（主进程）在 Linux PID namespace 中有特殊保护，SIGTERM 被忽略，SIGKILL 被内核拦截。所以从容器内部 `kill 1` 无法触发 `restartPolicy`。
+
+**要观察重启行为，应该创建一个"天生会崩溃"的容器**——主进程以非 0 退出码退出：
+
+```bash
+kubectl run crash-loop --image=busybox --restart=Always \
+    --command -- sh -c 'echo "crash!"; exit 1'
+```
+
+然后 watch RESTARTS 列的增长和 CrashLoopBackOff 状态。
+
+### 4. `kubectl delete pod <name>` vs `kubectl delete -f <file>`
+
+两者效果一样。前者按名字删除，后者按 YAML 文件删除。日常用 `-f` 更精确（不容易删错），用 `<name>` 更快捷。
+
+### 5. Ambassador demo 的局限性
+
+本节 Ambassador demo 用 busybox `httpd` 模拟了一个静态响应，**没有做真正的代理转发**。它只能验证"同 Pod 容器通过 localhost 互访"，无法展示 Ambassador 模式的核心价值——解耦外部服务、协议转换、TLS 封装等。真实场景中需替换为 nginx / Envoy / HAProxy 等真正做代理的容器。
+
+### 6. Sidecar 日志为空
+
+Sidecar 容器的脚本用 `echo "..." > file` 写文件而非输出到 stdout，所以 `kubectl logs -c sidecar` 为空。要验证 sidecar 在工作，应重复访问 nginx 看时间戳是否变化：
+
+```bash
+kubectl exec sidecar-demo -c nginx -- curl -s http://localhost
+# 等 5 秒再执行，时间戳应更新
 ```
 
 ## 关键概念总结

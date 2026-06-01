@@ -65,7 +65,11 @@ chapterXX-<topic>/
 1. Write/edit content per section
 2. Git commit after each completed section or meaningful change
 3. Commit message format: `feat(chapterXX): <description>`
-4. After practicing a section, update `PROGRESS.md` and commit
+4. 每节学完后，根据互动反馈执行课后调整：
+   a. **调整教学内容** — 将学生的困惑、发现、质疑反馈到 `README.md`（补充常见困惑、改进错误的实验设计、标注 demo 的局限性）
+   b. **更新 YAML 注释** — 对实验中发现的坑（如 logs 无输出、/bin/bash 缺失）加注释说明
+   c. **更新 `PROGRESS.md`** — 标记 `✅ 已完成` + 日期
+   d. **Git commit** — 提交所有改动
 
 ## Git Conventions
 
