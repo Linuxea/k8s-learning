@@ -1,5 +1,21 @@
 # 学习进度
 
+## 环境信息
+
+| 项目 | 值 |
+|------|-----|
+| 云平台 | AWS Lightsail (ap-southeast-1) |
+| 实例 | Large (8GB/2c/160GB) / $44/月 |
+| 公网 IP | <REDACTED> |
+| OS | Ubuntu 24.04 |
+| Docker | 29.5.2 |
+| kind | v0.27.0 |
+| kubectl | v1.31.7 |
+| K8s 集群 | v1.32.2 (3 节点: 1 control-plane + 2 worker) |
+| Ingress | NGINX Ingress Controller (kind) |
+| SSH | `ssh -i .ssh-key.pem ubuntu@<REDACTED>` |
+| 状态 | ✅ 就绪 (2026-06-01) |
+
 ## Chapter 01 - Pod 基础
 | 小节 | 内容 | 状态 | 完成日期 |
 |------|------|------|---------|
