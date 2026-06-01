@@ -5,7 +5,7 @@
 | 项目 | 值 |
 |------|-----|
 | 云平台 | AWS Lightsail (ap-southeast-1) |
-| 实例 | Large (8GB/2c/160GB) / $44/月 |
+| 实例 | Medium (4GB/2c/80GB) / $24/月 |
 | 公网 IP | <REDACTED> |
 | OS | Ubuntu 24.04 |
 | Docker | 29.5.2 |
