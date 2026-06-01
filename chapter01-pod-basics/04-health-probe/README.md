@@ -252,6 +252,38 @@ kubectl delete -f liveness-fail-demo.yaml
 - `failureThreshold`：给应用"自愈"的机会，不要设太小
 - livenessProbe 的端点应该轻量、快速，不要做复杂检查
 
+## 常见困惑
+
+### 1. 为什么需要三种探针，而不是一种？
+
+三种探针职责不同，分别对应三个独立的问题：
+
+```
+startupProbe  → "启动完了吗？"   没完 → 别急着判死活，给它时间
+livenessProbe → "还活着吗？"     死了 → 重启容器
+readinessProbe → "能接客吗？"    不能 → 暂时不发流量过来，但不重启
+```
+
+| 探针 | 比喻 | 失败动作 |
+|------|------|---------|
+| startupProbe | 等水烧开 | 不给 liveness/readiness 判死刑的机会 |
+| livenessProbe | 心跳监测 | 杀了重启 |
+| readinessProbe | 营业状态牌 | 挂牌"暂停营业"，不接新客 |
+
+### 2. 探针类型是 K8s 内置的吗？
+
+三种探针（startupProbe、livenessProbe、readinessProbe）是 K8s Pod API **内置字段**，不是插件也不是自定义资源。你只需要决定**探测方式**（三选一）：
+
+| 方式 | 适用 |
+|------|------|
+| `httpGet` | Web 服务 |
+| `tcpSocket` | Redis、MySQL 等非 HTTP 服务 |
+| `exec` | 自定义逻辑（检查文件、跑脚本） |
+
+### 3. 不配探针时，READY 为什么立刻变 1/1？
+
+没有 readinessProbe 时，K8s 默认容器启动即就绪。配了之后，READY 要从 `0/1` 变成 `1/1`——这是在等 readinessProbe 返回成功。这个差异在你 `kubectl get pods -w` 时很明显。
+
 ## 关键概念总结
 
 | 概念 | 要点 |
