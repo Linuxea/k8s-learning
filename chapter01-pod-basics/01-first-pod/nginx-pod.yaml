@@ -1,13 +1,15 @@
-apiVersion: v1
-kind: Pod
+# Pod 是 K8s 最小部署单元，里面跑一个 nginx 容器
+apiVersion: v1               # 核心 API 组，Pod 属于 v1
+kind: Pod                     # 资源类型：Pod
 metadata:
-  name: my-nginx
+  name: my-nginx              # Pod 名称，同 namespace 下必须唯一（主键）
   labels:
-    app: nginx
-    chapter: "01"
+    app: nginx                # 标签：用于 Service 批量选中（不是主键，可重复）
+    chapter: "01"             # 多个 Pod 可以共享同样的 label
 spec:
-  containers:
-    - name: nginx
-      image: nginx:1.27
+  containers:                 # 容器列表（这里只有一个，多容器模式见下一节）
+    - name: nginx             # 容器名，Pod 内唯一
+      image: nginx:1.27       # 镜像：Docker Hub 地址/镜像名:标签
       ports:
-        - containerPort: 80
+        - containerPort: 80   # 声明监听的端口（仅文档用途，不会自动映射到宿主机）
+                              # 要让外部访问需要 Service（见第三章）
