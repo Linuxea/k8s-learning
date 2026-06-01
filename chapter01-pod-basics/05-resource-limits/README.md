@@ -236,7 +236,7 @@ kubectl delete -f besteffort-pod.yaml
 kubectl apply -f oom-demo.yaml
 ```
 
-这个 Pod 的内存限制是 50Mi，但会尝试分配 100Mi 的内存。
+Pod 的内存限制是 50Mi，用 `tail /dev/zero` 持续吃掉内存。注意不是 `dd` 写文件（page cache 不算进程内存，不会触发 OOM），见常见困惑第 1 条。
 
 ### Step 2: 观察 OOM 过程
 
@@ -282,6 +282,27 @@ kubectl delete -f oom-demo.yaml
 | **用 ResourceQuota 限制命名空间总资源** | 防止一个团队/项目占用过多资源 |
 
 > **LimitRange** 可以为 Namespace 设置默认的 requests 和 limits。如果 Pod 没有设置资源，K8s 会自动应用 LimitRange 中的默认值。这是防止"裸奔 Pod"的最后一道防线。
+
+## 常见困惑
+
+### 1. 为什么 `dd if=/dev/zero of=/tmp/bigfile` 不一定触发 OOM？
+
+`dd` 写入文件时，数据进入 **page cache**（文件缓存）而非进程内存。Linux 内核可以在内存紧张时回收 page cache，因此不算容器真实占用的"不可回收"内存。
+
+**正确做法**：用 `tail /dev/zero` —— 读取 `/dev/zero` 的数据到进程内存中且不释放，一定会超 limits 触发 OOMKilled。
+
+### 2. 只设 `limits` 不设 `requests` 会怎样？
+
+K8s 自动将 `requests` 设为等于 `limits`。Pod 变成 `Guaranteed`（最高优先级）。
+
+### 3. 生产环境到底设 Burstable 还是 Guaranteed？
+
+| 场景 | 推荐 |
+|------|------|
+| 普通业务（可容忍驱逐） | Burstable（requests 保底，limits 允许爆发） |
+| 核心服务（支付、数据库） | Guaranteed（不被驱逐） |
+
+没有绝对最优，取决于你更在乎**安全性**还是**资源利用率**。
 
 ## 关键概念总结
 
