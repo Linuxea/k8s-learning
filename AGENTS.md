@@ -18,9 +18,19 @@ chapterXX-<topic>/
 
 ## Environment
 
-- **Cluster**: kind (Kubernetes IN Docker), 3 nodes — 1 control-plane + 2 worker, K8s v1.31.0
-- **Ingress**: NGINX Ingress Controller (kind-specific manifest)
-- Environment setup is flexible — not tied to any specific cloud provider
+- **远程实例**: AWS Lightsail Large (ap-southeast-1), IP/密钥见 `PROGRESS.md` 顶部
+- **K8s 集群**: kind (Kubernetes IN Docker), 3 节点 (1 control-plane + 2 worker)
+- **kubectl 执行位置**: 所有 kubectl 命令需 SSH 进入远程实例执行，本地 kubectl 无法直连集群
+- **SSH 密钥**: 项目根目录 `.ssh-key.pem`（已 gitignore）
+- 镜像清单: `nginx:1.27`、`busybox:1.36`、`alpine` + 工具镜像 (Prometheus/Grafana/Jaeger)
+
+### 远程操作流程
+
+```
+本地 → ssh -i .ssh-key.pem ubuntu@<IP> → 远程实例 → kubectl → K8s 集群
+```
+
+学生通过 SSH 进入远程实例后直接敲 kubectl 命令。**AI 不代替学生执行 SSH 或 kubectl**，只需给出命令让学生自己敲。
 
 ## 教学风格 (Teaching Style)
 
@@ -44,7 +54,7 @@ chapterXX-<topic>/
 - **禁止**：跳过学生的疑问继续推进下一节
 - **必须**：每次只给一条 kubectl 命令，等学生执行完、确认看懂后再给下一条
 - **必须**：学生提出"为什么"时，先让他猜，再给出准确答案
-- **必须**：一章结束后，根据互动反馈调整后续章节的 README 内容
+- **必须**：一节结束后，根据互动反馈调整后续章节的 README 内容
 
 ### 内容编写
 
@@ -58,7 +68,9 @@ chapterXX-<topic>/
 
 ## Key Files
 
-- `PROGRESS.md` — learning progress tracker; update status (`⬜ → 🔧 → ✅`) with dates after each section is practiced
+- `PROGRESS.md` — learning progress tracker + environment connection info; update after each section
+- `.ssh-key.pem` — SSH 私钥（gitignored），用于连接远程 K8s 实例
+- `README.md` — course catalog, not agent-relevant beyond structure overview
 
 ## Workflow
 
@@ -74,4 +86,5 @@ chapterXX-<topic>/
 ## Git Conventions
 
 - Branch prefix format: `<prefix>/linuxea_<suffix>` (e.g. `feat/linuxea_new_chapter`)
+- Commit: `feat|refactor|docs(chapterXX): description` — see git log for examples
 - No CI, lint, or test pipeline
