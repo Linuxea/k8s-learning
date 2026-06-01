@@ -307,15 +307,69 @@ kubectl exec lifecycle-demo -- cat /tmp/lifecycle.log
 ### Step 3: 触发 preStop 并验证
 
 ```bash
-# 删除 Pod 时 preStop 会执行（但由于 Pod 立刻被删除，不容易看到）
-# 更好的方式：先查看日志
-kubectl logs lifecycle-demo
-
-# 删除 Pod
-kubectl delete -f lifecycle-hook-demo.yaml
+# preStop 写入文件的数据随 Pod 删除而消失，直接 cat 来不及看到
+# 方法：重建 Pod 后，开两个终端：
+#   终端 1: kubectl logs lifecycle-demo -f
+#   终端 2: kubectl delete pod lifecycle-demo
+# 前提：YAML 中 preStop 用 tee 同时输出到 stdout 和文件
+# （见下方常见困惑第 4 条）
 ```
 
 > preStop 的输出在 Pod 删除后很难捕获，因为 Pod 很快就没了。在生产环境中，preStop 通常调用外部服务（如通知负载均衡器下线），效果更容易观察。
+
+## 常见困惑
+
+学习本节时学生常遇到以下问题。
+
+### 1. CrashLoopBackOff 到底是什么意思？
+
+拆开理解：**Crash**（崩溃）+ **Loop**（循环）+ **BackOff**（退避）。
+
+- K8s 不断重启容器（依赖 `restartPolicy`：Always 或 OnFailure）
+- 每次重启后等待时间翻倍：10s → 20s → 40s → 80s → 160s → 上限 5min
+- 退避期间状态显示 `CrashLoopBackOff`——"正在刹车，等一会儿再试"
+- 退避的目的是**防止反复崩溃的容器耗尽节点资源**
+
+### 2. Error vs CrashLoopBackOff
+
+两者本质区别不在于 restartPolicy 名，而在于 **kubelet 是否还会继续尝试重启**：
+- `Error` — 容器退出且**不再重启**。对应 `Never` 策略，或最后一次重试彻底放弃
+- `CrashLoopBackOff` — 容器在**退避等待中**，会继续重试。对应 `Always` / `OnFailure`
+
+### 3. postStart 为什么不能保证在 ENTRYPOINT 之前执行？
+
+K8s 启动容器时，ENTRYPOINT 和 postStart 是**并发启动**的，没有先后保证。两者竞速运行。
+
+**问题**：如果 postStart 依赖主进程就绪（例如 `curl localhost` 检查 nginx），而 nginx 启动比 postStart 慢，curl 失败 → postStart 失败 → K8s 杀死容器并重启。
+
+**正确做法**：postStart 只做不依赖主进程的初始化。依赖检查用 readiness probe（下一节）。
+
+### 4. preStop 日志难以捕获
+
+Pod 被删除时 preStop 写入文件的数据随 Pod 一起消失，来不及 `exec` 查看。
+
+**解决**：把 preStop 命令同时输出到 stdout（用 `tee`），这样 `kubectl logs` 能抓到：
+
+```yaml
+preStop:
+  exec:
+    command: ["/bin/sh", "-c", "echo preStop at $(date) | tee -a /tmp/lifecycle.log"]
+```
+
+然后用两个终端配合：一个 `kubectl logs -f` watch 日志，另一个 `kubectl delete pod`。
+
+### 5. SIGTERM 和 Shell 的陷阱
+
+当容器的 ENTRYPOINT 是 shell 脚本时（`/bin/sh -c "..."`），K8s 发送的 SIGTERM 会发给 shell（PID 1），而不是 shell 里面启动的应用程序。shell 默认**不转发信号**，导致应用程序收不到关闭通知，最终被 SIGKILL 强杀。
+
+**解决方案**：
+- 用 `exec ./my-app` 替换 shell 进程（让应用成为 PID 1）
+- 用 `trap '...' TERM` 在 shell 中捕获信号并手动转发
+- 用 `tini` 等轻量级 init 系统
+
+### 6. `terminationGracePeriodSeconds` 的计时范围
+
+该字段从删除请求开始计时，包含了 preStop 执行时间 + SIGTERM 等待时间。如果一个 Java 应用需要 20s 优雅关闭，建议设为 30~35s（留 buffer 给 preStop 和 GC 暂停等意外情况）。
 
 ## 关键概念总结
 

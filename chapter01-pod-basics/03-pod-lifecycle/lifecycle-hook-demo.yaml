@@ -1,6 +1,15 @@
 # 容器生命周期钩子演示：postStart 和 preStop
 # postStart: 容器创建后立即执行，记录启动事件
 # preStop: 容器终止前执行，记录关闭事件（可用于优雅关闭）
+#
+# 注意：
+# - postStart 与容器 ENTRYPOINT 并发执行，不保证先后顺序
+#   若 postStart 依赖主进程已就绪（如 curl localhost），可能失败导致容器被杀死重启
+# - preStop 写入文件的数据随 Pod 删除而消失，来不及 exec 查看
+#   推荐用 tee 同时输出到 stdout：echo "..." | tee -a /tmp/file
+#   然后用 kubectl logs -f 在另一个终端捕捉
+# - SIGTERM 发给 PID 1（shell），shell 默认不转发给子进程
+#   应用收不到信号会被 SIGKILL 强杀，解决方案见 README 常见困惑第 5 条
 apiVersion: v1
 kind: Pod
 metadata:
@@ -29,7 +38,7 @@ spec:
 
         # preStop: 容器终止前同步执行
         # 执行完成后才会发送 SIGTERM 信号
-        # 注意：执行时间计入 terminationGracePeriodSeconds
+        # 执行时间计入 terminationGracePeriodSeconds
         preStop:
           exec:
             command:
@@ -43,6 +52,6 @@ spec:
                 echo "Graceful shutdown completed." >> /tmp/lifecycle.log
 
       # 优雅关闭超时时间（默认 30 秒）
-      # SIGTERM → 等待 30 秒 → SIGKILL
-      # 如果 preStop 执行了 10 秒，应用只剩 20 秒来做自己的清理
+      # 计时范围 = preStop + SIGTERM等待，全部包含在内
+      # 如果 preStop 执行了 10 秒 + 应用需要 20s 优雅关闭 → 需设 ≥ 35s
       terminationGracePeriodSeconds: 30
