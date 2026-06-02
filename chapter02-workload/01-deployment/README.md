@@ -290,6 +290,39 @@ spec:
 
 > 缺点很明显：更新期间服务完全不可用。所以一般只在必须时才用。
 
+## 常见困惑
+
+### 1. Deployment 的 kubectl 简写是什么？
+
+Deployment 的别名是 `deploy`，**不是** `deploys`。`kubectl get deploy` 和 `kubectl get deployments` 等价。
+
+### 2. Deployment → ReplicaSet → Pod 的名称规则
+
+三者的名称通过 hash 关联：
+
+```
+nginx-deployment（Deployment 名）
+  └── nginx-deployment-66fc78d4b8（RS名 = Deploy名 + Pod模板hash）
+        ├── nginx-deployment-66fc78d4b8-cjrsf（Pod名 = RS名 + 随机串）
+        └── ...
+```
+
+RS 名中的 hash 来自 **Pod 模板的完整内容（spec + labels）**。模板里任何字段变了（镜像、标签、环境变量……），hash 就变 → 新 RS 创建 → 滚动更新触发。
+
+### 3. `rollout undo` 为什么不重新拉取镜像？
+
+回滚只是把已缩容到 0 的旧 RS 重新扩回期望副本数。旧 RS 的 Pod 模板从未改变，镜像名没变。节点上已有镜像缓存时是秒级完成。
+
+### 4. 修改 Pod 模板的 labels 会触发滚动更新吗？
+
+会。labels 属于 Pod 模板的一部分 → 模板 hash 变 → 新 RS 创建 → 滚动更新触发。加一个标签也触发全量 Pod 重建，生产环境需留意。
+
+### 5. 快速查看 Deployment 三级结构
+
+```bash
+kubectl get deploy,rs,pods     # 一行命令看到 Deploy、RS、Pod 三级关系
+```
+
 ## kubectl rollout 命令速查
 
 | 命令 | 作用 |
