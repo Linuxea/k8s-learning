@@ -4,17 +4,10 @@
 
 | 项目 | 值 |
 |------|-----|
-| 云平台 | AWS Lightsail (ap-southeast-1) |
-| 实例 | Medium (4GB/2c/80GB) / $24/月 |
-| 公网 IP | 47.131.207.217 |
-| OS | Ubuntu 24.04 |
-| Docker | 29.5.2 |
-| kind | v0.27.0 |
-| kubectl | v1.31.7 |
-| K8s 集群 | v1.32.2 (3 节点: 1 control-plane + 2 worker) |
-| Ingress | NGINX Ingress Controller (kind) |
-| SSH | `ssh -i .ssh-key.pem ubuntu@47.131.207.217` |
-| 状态 | ✅ 就绪 (2026-06-02) |
+| 集群类型 | kind (3 节点: 1 control-plane + 2 worker) |
+| kubectl 版本 | v1.31.7 |
+| 状态 | 🗑️ 已释放 (2026-06-02) |
+| 备注 | 下次学习时重建实例，更新此表 |
 
 ## Chapter 01 - Pod 基础
 | 小节 | 内容 | 状态 | 完成日期 |
