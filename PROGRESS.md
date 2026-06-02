@@ -4,10 +4,17 @@
 
 | 项目 | 值 |
 |------|-----|
-| 集群类型 | kind (3 节点: 1 control-plane + 2 worker) |
-| kubectl 版本 | v1.31.7 |
-| 状态 | 🗑️ 已释放 (2026-06-02) |
-| 备注 | 下次学习时重建实例，更新此表 |
+| 云平台 | 腾讯云轻量应用服务器 (上海) |
+| 实例 | 2c/3.3GB/60GB |
+| 公网 IP | 124.221.119.24 |
+| SSH | `ssh tencent-light-shanghai` |
+| OS | Ubuntu (kernel 5.15) |
+| Docker | 26.1.3 |
+| kind | v0.27.0 |
+| kubectl | v1.31.7 |
+| K8s 集群 | v1.32.2 (3 节点: 1 control-plane + 2 worker) |
+| 可用内存 | ~1.4GB |
+| 状态 | ✅ 就绪 (2026-06-03) |
 
 ## Chapter 01 - Pod 基础
 | 小节 | 内容 | 状态 | 完成日期 |
