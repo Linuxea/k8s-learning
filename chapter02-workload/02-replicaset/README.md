@@ -202,6 +202,42 @@ kubectl scale rs nginx-replicaset --replicas=5
 
 > 但在生产中，扩缩容应该通过 HPA（Horizontal Pod Autoscaler）自动完成，而不是手动操作。
 
+## 常见困惑
+
+### 1. `kubectl edit` 改了什么，文件改了什么？
+
+`kubectl edit` 直接修改集群 etcd 中的活对象，**不修改磁盘上的 YAML 文件**。两者会不一致：
+
+```
+磁盘文件: replicas: 3  ← 你以为的
+集群实际: replicas: 5  ← kubectl edit 改的
+```
+
+下次 `kubectl apply -f file.yaml` 会把副本数拉回 3。要么改文件再 apply（声明式），要么 edit 后立刻 `kubectl get <res> -o yaml > file.yaml` 导出。
+
+### 2. 改名后 apply 会更新旧资源还是新建？
+
+不会更新——**会新建**。kubectl apply 按 `apiVersion + kind + metadata.name` 匹配资源。name 变了就是新资源，旧资源继续跑。这时集群里有两份 RS + 它们的 Pod，形成配置文件外的"幽灵资源"。
+
+避免方法：改名就要负责清理上一版，`kubectl delete -f old.yaml && kubectl apply -f new.yaml`。
+
+### 3. ReplicaSet 的 selector 不可变
+
+创建后改 selector 会被 K8s API Server 拒绝。如果 selector 能变，原来匹配的 Pod 突然"不归我管了"——RS 以为副本为 0，立刻创建新 Pod，导致 Pod 所有权混乱和资源泄漏。
+
+### 4. ReplicaSet 改镜像为什么不会滚动更新？
+
+ReplicaSet 只保证副本数，不管 Pod 内容。改 Pod 模板后，**已有的 Pod 不受影响**，只有未来新建的 Pod 才用新模板。这和 Deployment 的自动滚动更新形成鲜明对比——Deployment 会创建新 RS 来逐步替换旧 Pod。
+
+### 5. 节点宕机后 ReplicaSet 多久重建 Pod？
+
+不是秒级。流程：
+- kubelet 停止汇报心跳 → 约 40s 后节点标记 NotReady
+- `pod-eviction-timeout` 等待 → 默认 5 分钟
+- 总计约 **5-6 分钟**后 RS 才开始在其他节点重建 Pod
+
+预留缓冲时间是为了防止短暂网络抖动误判。
+
 ## 思考题
 
 1. 如果你把 ReplicaSet 的 `selector` 设得太宽泛（比如只匹配 `app=nginx`），可能会"认领"到不属于它的 Pod。这会造成什么问题？怎么避免？
