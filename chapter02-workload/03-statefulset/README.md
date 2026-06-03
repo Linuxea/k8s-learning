@@ -260,6 +260,36 @@ kubectl delete pv <pv-name>
 | 搜索引擎（Elasticsearch） | StatefulSet |
 | 日志采集、监控代理（每个节点一个） | DaemonSet（下一节） |
 
+## 常见困惑
+
+### 困惑 1：有状态 = 不能自动重建？
+
+**误解**：StatefulSet 的 Pod 如果挂了不会自动重建，因为数据重要，不能随便迁移。
+
+**正解**：StatefulSet 的控制器**会自动重建** Pod，这和 Deployment 一样。区别在于**重建之后**发生的事情——Pod 名字不变、同一张 PVC 绑回来、DNS 记录恢复。数据丢不丢不取决于"要不要自动重建"，而取决于**存储类型**：
+
+- 本地磁盘（hostPath）：节点宕机 → Pod 在其他节点重建 → 数据丢失（新节点上找不到老节点的磁盘）
+- 网络存储（NFS、Ceph、云盘）：节点宕机 → Pod 在其他节点重建 → PVC 从网络中重新挂载 → **数据完好**
+
+**任何有状态应用在生产环境都应该使用网络存储**，否则节点宕机就意味着数据没了。
+
+### 困惑 2：不要存储就别用 StatefulSet
+
+**误解**：StatefulSet 的主要作用是持久存储，如果我的应用不需要磁盘，用 Deployment + 普通 Service 就够了。
+
+**正解**：StatefulSet 解决的是**身份**问题，存储只是身份的一部分。一个应用可以只要身份不要存储（比如 ZooKeeper、etcd——它们的节点需要互相通过固定 DNS 名发现对方，但数据管理在自己手里）。Headless Service 提供的**稳定网络标识**（`pod-0.svc.ns.svc.cluster.local`）是 StatefulSet 的独立特性，Deployment + 普通 ClusterIP Service 做不到这一点。
+
+### 困惑 3：StatefulSet 删除后 PVC 为什么还在？
+
+这是**设计如此**，不是 bug。StatefulSet 控制器只管理 Pod 生命周期，不管理 PVC——因为数据太重要，不能因为误操作就丢了。你需要手动 `kubectl delete pvc -l app=xxx` 清理。
+
+### 困惑 4：Headless Service 和普通 Service 的区别只在一个字段
+
+`clusterIP: None` — 就这么简单。但效果差距巨大：
+
+- 普通 Service：DNS 返回虚拟 IP → kube-proxy 做负载均衡 → 随机转发
+- Headless Service：DNS 直接返回所有后端 Pod IP → 客户端自己选 → 还能用 `pod-name.service-name` 精确连到某个 Pod
+
 ## 思考题
 
 1. 如果 StatefulSet 的 Pod-0 所在节点宕机了，会发生什么？Pod-0 会在其他节点重建吗？数据会怎样？
