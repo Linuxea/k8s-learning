@@ -31,7 +31,7 @@
 | 01 | Deployment | ✅ 已完成 | 2026-06-02 |
 | 02 | ReplicaSet | ✅ 已完成 | 2026-06-02 |
 | 03 | StatefulSet | ✅ 已完成 | 2026-06-03 |
-| 04 | DaemonSet | ⬜ 未开始 | |
+| 04 | DaemonSet | ✅ 已完成 | 2026-06-03 |
 | 05 | Job / CronJob | ⬜ 未开始 | |
 
 ## Chapter 03 - 服务与网络

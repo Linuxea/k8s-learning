@@ -261,7 +261,22 @@ kubectl taint nodes <node-name> <key>=<value>:NoSchedule
 kubectl taint nodes <node-name> <key>:NoSchedule-
 ```
 
-## 思考题
+## 常见困惑
+
+### 困惑 1：节点是什么？DaemonSet 按节点部署，但 kind 集群里节点是 Docker 容器，有意义吗？
+
+在 kind 集群中，每个"节点"是一个 Docker 容器，确实共享宿主机内核，但**各有独立的文件系统和 network namespace**。DaemonSet 的 hostPath 挂载的是**该容器**内的目录，不会跨容器重复采集。
+
+真实生产环境中节点是独立物理机/云主机，DaemonSet 的"每节点一个 Pod"语义完全相同——只是规模从 3 个容器变成 100 台机器。
+
+### 困惑 2：Toleration 和 Taint 的关系
+
+- **Taint（污点）**：节点说"我有洁癖，普通 Pod 别来"（如 control-plane 默认有 `node-role.kubernetes.io/control-plane:NoSchedule`）
+- **Toleration（容忍）**：Pod 说"没事，我不介意"（DaemonSet 的 Pod 加对应 toleration 才能跑在 control-plane 上）
+
+没有 toleration 的 DaemonSet 会跳过有 taint 的节点，导致 control-plane 上没有 Pod。这在日志采集、监控代理等场景下不可接受——你需要覆盖所有节点。
+
+
 
 1. 如果一个节点被临时隔离（`kubectl cordon`），DaemonSet 会怎么处理这个节点上的 Pod？新版本的 DaemonSet 会更新这个节点上的 Pod 吗？
 2. 为什么网络插件（如 Calico、Flannel）通常用 DaemonSet 部署？如果用 Deployment 部署会有什么问题？
