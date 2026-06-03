@@ -1,90 +1,47 @@
 # AGENTS.md
 
-## Project Overview
+## Project
 
-Kubernetes learning curriculum — chapters 01-10, each with 5 sub-sections containing `README.md` + `.yaml` examples. All content is Chinese. No code, no build, no CI — pure documentation + YAML manifests.
-
-## Structure Convention
+Kubernetes 互动式教学课程 — 纯文档 + YAML manifests，无代码/构建/CI。内容全中文，镜像仅用 `nginx:1.27`、`busybox:1.36`、`alpine`。
 
 ```
-chapterXX-<topic>/
-  0N-<subtopic>/
-    README.md          # Deep tutorial: concepts → field tables → step-by-step kubectl → 思考题
-    *.yaml             # Runnable examples with Chinese comments
+chapterXX-<topic>/0N-<subtopic>/README.md + *.yaml
 ```
 
-- Chapters 01-10 = learning content, each chapter is independent
-- Every README ends with thought questions (思考题) and nav link to next section
+每个 README 末尾有思考题和下一节导航链接。`PROGRESS.md` 追踪进度和远程环境信息。
 
 ## Environment
 
-- **远程实例**: AWS Lightsail Large (ap-southeast-1), IP/密钥见 `PROGRESS.md` 顶部
-- **K8s 集群**: kind (Kubernetes IN Docker), 3 节点 (1 control-plane + 2 worker)
-- **kubectl 执行位置**: 所有 kubectl 命令需 SSH 进入远程实例执行，本地 kubectl 无法直连集群
-- **SSH 密钥**: 项目根目录 `.ssh-key.pem`（已 gitignore）
-- 镜像清单: `nginx:1.27`、`busybox:1.36`、`alpine` + 工具镜像 (Prometheus/Grafana/Jaeger)
+| 项 | 值 |
+|----|----|
+| 集群 | kind 3 节点 (k8s-learn)，腾讯云上海 `124.221.119.24` |
+| SSH | `ssh tencent-light-shanghai`（密钥 `~/.ssh/tencent_light_shanghai`） |
+| kubectl | **必须 SSH 进远程执行**，本地无法直连 |
+| 项目路径 | 远程 `/home/ubuntu/k8s-learning`，本地 `/home/linuxea/code/k8s-learning` |
 
-### 远程操作流程
+> 远程实例在国内，`raw.githubusercontent.com` 和 `registry.k8s.io` 无法直接访问。下载 YAML 在本地上传（`scp`），镜像替换阿里云源：`s|registry.k8s.io/|registry.aliyuncs.com/google_containers/|g`。
 
-```
-本地 → ssh -i .ssh-key.pem ubuntu@<IP> → 远程实例 → kubectl → K8s 集群
-```
+## Teaching Session Rules
 
-学生通过 SSH 进入远程实例后直接敲 kubectl 命令。**AI 不代替学生执行 SSH 或 kubectl**，只需给出命令让学生自己敲。
+这些规则在**学生互动式教学**时生效：
 
-## 教学风格 (Teaching Style)
+- **学生自己敲命令**，AI 只给命令，不代执行
+- **每次只给一条命令**，等学生执行完、反馈结果后再继续
+- 学生提出"为什么"时，先让他猜，再给答案
+- 不要一次输出 3 条以上命令或大段解读
+- 学生喊停就停，不赶进度
+- README 是课后参考手册，不是讲课稿
 
-> 核心原则：**学生动手，AI 辅助。** 学生是驾驶员，AI 是副驾导航。
+## Post-Session Workflow
 
-### 交互模式
+一节学完后必须执行四步：
 
-| 原则 | 说明 |
-|------|------|
-| **学生驱动** | 学生亲自敲命令、看输出。AI 绝不代替学生执行，只在学生请求时才解释 |
-| **按需解释** | 不在操作前长篇大论地介绍概念。学生遇到不懂的字段/现象 → 提问 → AI 解释。让理论从实践中自然浮现 |
-| **小步前进** | 每次只给一条命令或一个概念，等学生消化完再继续 |
-| **验证理解** | 每个关键点后确认学生是否明白（"明白了吗？""有什么疑问？"），不假设理解 |
-| **不赶进度** | 学生喊停就停。宁可慢，不可灌输。困惑是学习机会，不是需要跳过的障碍 |
-| **利用发现** | 学生自己观察到的现象（Events、输出差异）是最好的教学素材，顺着他的发现展开解释 |
+1. **更新 README** — 把学生的困惑、踩坑、误解加进「常见困惑」节
+2. **更新 YAML 注释** — 标注实际操作中发现的坑（如镜像拉取/端口冲突等）
+3. **更新 PROGRESS.md** — 标记 `✅ 已完成` + 日期
+4. **Git commit** — 格式 `feat(chapterXX): <description>`
 
-### AI 行为约束
+## Git
 
-- **禁止**：一次给出 3 条以上命令或一大段输出解读
-- **禁止**：在学生还没操作前就预判结果或提前解释
-- **禁止**：跳过学生的疑问继续推进下一节
-- **必须**：每次只给一条 kubectl 命令，等学生执行完、确认看懂后再给下一条
-- **必须**：学生提出"为什么"时，先让他猜，再给出准确答案
-- **必须**：一节结束后，根据互动反馈调整后续章节的 README 内容
-
-### 内容编写
-
-- 语言：中文
-- 深度：解释"为什么"，而非仅仅"是什么"
-- 每节 README 保持 200+ 行，含概念、字段表、操作步骤、思考题
-- 镜像：仅用 `nginx`、`busybox`、`alpine`（外加 Prometheus/Grafana/Jaeger 的工具镜像）
-- YAML 文件：关键字段必须有中文注释
-- 表格解释字段含义，`>` 引用块放提示/警告
-- README 作为**参考手册**（学生课后查阅），不是**讲课稿**（AI 按教学风格来互动）
-
-## Key Files
-
-- `PROGRESS.md` — learning progress tracker + environment connection info; update after each section
-- `.ssh-key.pem` — SSH 私钥（gitignored），用于连接远程 K8s 实例
-- `README.md` — course catalog, not agent-relevant beyond structure overview
-
-## Workflow
-
-1. Write/edit content per section
-2. Git commit after each completed section or meaningful change
-3. Commit message format: `feat(chapterXX): <description>`
-4. 每节学完后，根据互动反馈执行课后调整：
-   a. **调整教学内容** — 将学生的困惑、发现、质疑反馈到 `README.md`（补充常见困惑、改进错误的实验设计、标注 demo 的局限性）
-   b. **更新 YAML 注释** — 对实验中发现的坑（如 logs 无输出、/bin/bash 缺失）加注释说明
-   c. **更新 `PROGRESS.md`** — 标记 `✅ 已完成` + 日期
-   d. **Git commit** — 提交所有改动
-
-## Git Conventions
-
-- Branch prefix format: `<prefix>/linuxea_<suffix>` (e.g. `feat/linuxea_new_chapter`)
-- Commit: `feat|refactor|docs(chapterXX): description` — see git log for examples
-- No CI, lint, or test pipeline
+- 只在 main 分支操作，无 PR/CI
+- Commit 格式: `feat|refactor|docs(chapterXX): description`
