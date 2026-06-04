@@ -378,6 +378,18 @@ spec:
       restartPolicy: Never
 ```
 
+## 常见困惑
+
+1. **`kubectl create job -- exit 1` 为什么报 StartError？** — `--` 后的 `exit 1` 被当成可执行文件路径，而不是 shell 命令。`exit` 是 shell 内置命令，没有对应的二进制。正确写法：`-- /bin/sh -c "exit 1"`。
+
+2. **`startingDeadlineSeconds` 和 `activeDeadlineSeconds` 分不清？** — 前者在 CronJob spec 里，管"错过了调度时间多宽窗口内补启动"；后者在 Job spec 里，管"Job 最多跑多久超时就杀"。一个管补票，一个管超时。
+
+3. **Completed/Error 的 Pod 为什么一直不消失？** — Job 不会主动删除 Pod。Completed 是正常结果，Error 留下来给你查日志。必须靠 `ttlSecondsAfterFinished` 或手动 `kubectl delete job` 清理。
+
+4. **`parallelism: 0` 有什么用？** — 不是无效配置。可以用来"预排任务等信号放行"：先创建 Job，等时机合适时 `kubectl patch` 改大 parallelism 即可开始执行。
+
+5. **CronJob 并发策略为什么推荐 `Forbid` 而不是默认的 `Allow`？** — 大多数定时任务不应并发（如数据库迁移、数据备份），并发会产生数据竞争。`Allow` 还会导致僵尸 Job 堆积，占着 CPU/内存不放。
+
 ## 思考题
 
 1. Job 的 `parallelism` 设为 0 会发生什么？这个配置有实际用途吗？
