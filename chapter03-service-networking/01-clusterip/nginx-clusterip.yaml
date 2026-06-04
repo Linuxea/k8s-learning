@@ -43,6 +43,7 @@ spec:
   # 只在集群内部可达，外部无法直接访问
   type: ClusterIP
   # selector 和 Pod 的 labels 匹配，Service 才能找到这些 Pod
+  # 注意：必须精确匹配，拼写错误会导致 Endpoints 为空（无后端 Pod）
   selector:
     app: nginx-clusterip
   ports:
@@ -52,3 +53,5 @@ spec:
       # targetPort: Pod 上容器监听的端口（与 containerPort 对应）
       # 可以写数字，也可以写容器上定义的端口名
       targetPort: 80
+# DNS 解析：CoreDNS 自动为 Service 注册 <service-name>.<namespace>.svc.cluster.local
+# 同命名空间内直接访问 nginx-clusterip-svc 即可，DNS search domain 会自动补全后缀

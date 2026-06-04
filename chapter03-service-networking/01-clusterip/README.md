@@ -267,6 +267,16 @@ kubectl delete -f nginx-clusterip.yaml
 | 后端管理 | selector 匹配 Pod 标签，自动维护 Endpoints |
 | 适用场景 | 微服务间调用、数据库、缓存等内部服务 |
 
+## 常见困惑
+
+1. **busybox `nslookup` 报 NXDOMAIN，DNS 解析失败了？** — 不是失败，是 `nslookup` 按 `/etc/resolv.conf` 里的 search 域逐个尝试拼接域名。它先试 `nginx-clusterip-svc.cluster.local`（NXDOMAIN），再试 `nginx-clusterip-svc.svc.cluster.local`（NXDOMAIN），最终试到 `nginx-clusterip-svc.default.svc.cluster.local` 才匹配成功。看输出里有 `Name: ... Address: 10.96.x.x` 这行就是解析成功了，前面的 NXDOMAIN 可以忽略。**同一个 namespace 内直接用服务名就行**，CoreDNS 会自动补全 search domain。
+
+2. **直接访问 Pod IP 也能通，那 Service 还提供了什么价值？** — 直接访问 Pod IP 本身是可达的，问题不在"能不能访问"，而在于"稳不稳定"。Pod 重建后 IP 会变，你写死在代码里的 IP 就失效了。Service 提供了：①**稳定入口**（DNS 名称不变）②**负载均衡**（多个后端 Pod 时自动分发请求）。你的代码永远用 `http://nginx-clusterip-svc` 就行，不管背后换了几批 Pod。
+
+3. **ClusterIP 是个虚拟 IP，不绑定任何网卡，数据包怎么转发的？** — 靠 `kube-proxy`（每个节点上的 DaemonSet）监听 Service 和 Endpoints 的变化，在节点内核写入 **iptables/IPVS 规则**。Pod 发出的请求到达 ClusterIP 时，iptables 规则在内核层面做 DNAT（目标地址转换），把目标 IP 从 ClusterIP 改写为某个后端 Pod 的 IP，然后正常路由过去。整个过程对应用透明，不需要额外的代理进程。
+
+4. **Service 的负载均衡是真正轮询吗？** — 默认 iptables 模式下是**随机选择**，不是轮询（round-robin）。小样本下可能不均匀，但理论上长期趋近均匀分布。如果用 IPVS 模式（`kube-proxy --proxy-mode=ipvs`），可以配置轮询、最少连接等更丰富的调度算法。
+
 ## 思考题
 
 1. 如果 Service 的 `selector` 里写错了标签名（比如写成了 `app: nginx-wrong`），访问 Service 会发生什么？怎么排查？

@@ -37,7 +37,7 @@
 ## Chapter 03 - 服务与网络
 | 小节 | 内容 | 状态 | 完成日期 |
 |------|------|------|---------|
-| 01 | ClusterIP | ⬜ 未开始 | |
+| 01 | ClusterIP | ✅ 已完成 | 2026-06-04 |
 | 02 | NodePort | ⬜ 未开始 | |
 | 03 | LoadBalancer | ⬜ 未开始 | |
 | 04 | Headless Service | ⬜ 未开始 | |
