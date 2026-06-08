@@ -462,7 +462,32 @@ Client → LoadBalancer (1个) → Ingress Controller → 路由规则 → api-s
 | Headless | 直连特定 Pod | `pod-name.service-name` |
 | Ingress | HTTP 路由整合 | 一个 IP + 域名/路径规则 |
 
-## 思考题
+## 常见困惑
+
+### 1. Ingress 和 Spring Gateway / 应用网关是什么关系？
+
+角色相同——都是按路径/域名做 HTTP 路由。但层级不同：
+- **Ingress** — K8s 集群层面，请求进集群的第一关
+- **应用网关**（Spring Gateway / Zuul）— Pod 内部，微服务间的路由
+
+常见架构：`外部 → Ingress → Service → 应用网关 → 具体微服务`。两层各管不同的事，不是替代关系。
+
+### 2. Ingress 和 Service 哪个是"负载均衡"？
+
+不是"更加负载均衡"，是**不同 OSI 层**：
+- **Service（L4）** — 只看 IP+端口，在 Pod 之间做 TCP 负载均衡
+- **Ingress（L7）** — 看 HTTP 的域名/路径，决定送到**哪个 Service**
+
+实际流程：`请求 → Ingress 选 Service → Service 选 Pod`。两层分工，各做各的。
+
+### 3. Ingress 的后端 Service 为什么用 ClusterIP 就够了？
+
+因为 Ingress Controller 和所有 Service 都在集群内部。Controller 通过 ClusterIP 就能连通后端 Service，不需要把 Service 暴露到集群外。NodePort/LoadBalancer 是给集群外部访问用的。
+
+### 4. kind 环境踩坑
+
+- **多个 Ingress 资源冲突**：如果有旧的 Ingress 资源也匹配了 `/` 路径，会抢流量。我们清理了之前的 `nginx-test` ingress 才让路径路由正常工作。
+- **`curl localhost` 不通**：Ingress Controller 的 80 端口映射在 Docker 容器上，不是宿主机。必须 `docker exec` 进节点内测试，或设 port-forward。
 
 1. Ingress 只支持 HTTP/HTTPS 协议。如果你的服务是 TCP 协议（比如 MySQL、Redis），能用 Ingress 吗？（提示：有些 Ingress Controller 支持 TCP stream，但不是标准 Ingress 功能）
 2. 本章示例中，`/api` 路径被路由到 api-service，但 api-service 的 nginx 返回的是根路径 `/index.html` 的内容。如果 API 应用期望收到 `/api` 路径（如 `/api/users`），会有什么问题？怎么解决？（提示：看看 `rewrite-target` 注解）
