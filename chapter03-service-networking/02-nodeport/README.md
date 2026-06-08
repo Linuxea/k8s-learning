@@ -192,6 +192,45 @@ kubectl delete -f nginx-nodeport.yaml
 | 生产环境推荐 | 内部服务用 | 一般不直接用 |
 | 包含关系 | — | NodePort = ClusterIP + 节点端口 |
 
+## 常见困惑
+
+### 1. `lsof` / `ss` 看不到 NodePort 监听进程
+
+NodePort 端口**不是**被某个程序 bind 监听的。kube-proxy 通过 iptables（或 IPVS）在内核层面创建转发规则，流量一到端口就被内核直接转发给 Pod。没有用户态进程在 hold 这个端口，所以 `lsof` / `ss -tlnp` 看不到进程名是正常的。
+
+> 这是 NodePort 和普通进程监听最本质的区别：流量在内核态完成转发，不走用户态代理。
+
+### 2. kind 环境下公网 IP 访问不通
+
+kind 的节点是 Docker 容器，NodePort 端口绑定在容器的网络命名空间中（IP 如 `172.18.0.x`）。宿主机的公网 IP 和 Docker 容器的内网 IP 是两套网络：
+
+- **能从宿主机访问** — `curl 172.18.0.2:30081` 是通的，因为宿主机和容器在同一个 Docker bridge 网络上
+- **不能从公网访问** — `curl 公网IP:30081` 不通，因为公网 IP 绑定在宿主机网卡上，30081 却监听在容器里
+
+这不是 NodePort 的问题，是 kind 架构的限制。在真实集群（kubelet 直跑宿主机）上，NodePort 直接绑定在宿主机的网卡上，公网就能直接访问了。
+
+### 3. "外部访问"到底指什么？
+
+「外部」是相对于节点的网络而言的，不是相对于整个互联网：
+
+| 访问层级 | 方式 | 典型场景 |
+|---------|------|---------|
+| 集群内部 | `ClusterIP:port` | Pod 之间通信 |
+| 节点外部（但可达） | `任意节点IP:NodePort` | 同 VPC 内的其他机器、宿主机 curl |
+| 互联网 | 公网 IP:NodePort | 需要 LoadBalancer 或 Ingress |
+
+使用 NodePort 的前提：**你能路由到节点的 IP**。kind 里节点 IP 是 Docker 内网 IP，只在宿主机范围内可达；云上 VM 直接装 kubelet 时，节点 IP 可能是公网 IP 或 VPC IP。
+
+### 4. `80:30081/TCP` 两个端口各管什么？
+
+`PORT(S)` 列显示 `80:30081/TCP`：
+
+- **`80`**（左边/`port`）：Service 在集群内部的端口，Pod 之间用 `Service名称:80` 互相访问
+- **`30081`**（右边/`nodePort`）：节点网卡上绑定的端口，外部用 `任意节点IP:30081` 进入集群
+- **`targetPort`**（不显示在这里，在 YAML 里）：Pod 内容器监听的端口
+
+流量路径：`客户端 → 节点IP:30081 → kube-proxy 内核转发 → Service:80 → 随机选一个 Pod:80`
+
 ## 思考题
 
 1. 如果你的 Service 指定了 `nodePort: 30080`，但这个端口已经被另一个 Service 占用了，会发生什么？
