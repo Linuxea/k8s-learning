@@ -235,6 +235,44 @@ kubectl delete -f nginx-loadbalancer.yaml
 | 适用场景 | 内部服务 | 测试/简单暴露 | 生产环境外部访问 |
 | 包含关系 | — | ClusterIP + 节点端口 | NodePort + 云 LB |
 
+## 常见困惑
+
+### 1. LoadBalancer 和普通 Service 是什么关系？
+
+LoadBalancer 不是独立的新概念，它就是 Service 的第三种 `type`。三种 type 共用同一个 Service 框架，只是层层叠加：
+
+```yaml
+spec:
+  type: LoadBalancer  # ClusterIP / NodePort / LoadBalancer
+```
+
+`type` 字段决定 K8s 额外做什么：
+- `ClusterIP` — 只分配集群 IP
+- `NodePort` — ClusterIP + 在每个节点开端口
+- `LoadBalancer` — NodePort + 调云 API 创建外部 LB
+
+所以 LoadBalancer Service 仍然有 ClusterIP，也仍然有 NodePort，只是多了一个外部 LB。
+
+### 2. MetalLB 原理
+
+MetalLB 监听 K8s 中 `type: LoadBalancer` 的 Service，从预设的 IP 池中分配一个 IP 写入 `EXTERNAL-IP`。然后通过 **L2（ARP）** 或 **BGP** 协议通告这个 IP。当其他机器 ARP 请求这个 IP 时，MetalLB 的 speaker（运行在每个节点上的 DaemonSet Pod）代为应答，把流量引导到正确节点。
+
+本质：用软件模拟了云 LB 的 IP 分配 + 流量转发的角色。
+
+### 3. kind 实操踩坑
+
+- **`raw.githubusercontent.com` 在中国可能无法直接访问**：MetalLB 的 YAML 托管在 GitHub，部分国内云 IP 会被墙。我们远程成功拉取了，但如果在其他环境失败，可以本地 `curl` + `scp` 上传。
+- **`kubectl wait` 超时**：speaker Pod 是 `Running 1/1` 但 wait 仍然超时。`--selector=app=metallb` 匹配到了 controller 和 speaker，但 speaker 的 readiness gate 条件可能不匹配默认的 `condition=ready`。Pod 实际已经就绪，可以忽略。
+- **MetalLB 分配的 IP 是 Docker 内网 IP**：`172.18.255.200` 只有 kind 网络内可达，不是公网 IP。真实云 LB 分配的是公网 IP。
+
+### 4. `EXTERNAL-IP` 从 `<pending>` 到有值的过程
+
+| 状态 | 含义 |
+|------|------|
+| `<pending>` | K8s 在等云提供商（或 MetalLB）分配 IP |
+| `172.18.255.200` | MetalLB 从 IPAddressPool 中分配了该 IP |
+| 公网 IP | 真正的云 LB 分配的公网地址 |
+
 ## 思考题
 
 1. 如果你有 20 个 HTTP 服务需要对外暴露，全部用 LoadBalancer 类型，会有什么问题？（提示：费用、IP 消耗）

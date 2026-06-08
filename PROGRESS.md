@@ -39,7 +39,7 @@
 |------|------|------|---------|
 | 01 | ClusterIP | ✅ 已完成 | 2026-06-04 |
 | 02 | NodePort | ✅ 已完成 | 2026-06-08 |
-| 03 | LoadBalancer | ⬜ 未开始 | |
+| 03 | LoadBalancer | ✅ 已完成 | 2026-06-08 |
 | 04 | Headless Service | ⬜ 未开始 | |
 | 05 | Ingress | ⬜ 未开始 | |
 

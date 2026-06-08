@@ -1,5 +1,9 @@
 # ============================================================
 # LoadBalancer Service 示例：Deployment + Service
+#
+# kind 环境需要安装 MetalLB 才能让 EXTERNAL-IP 不为 <pending>
+# 安装: kubectl apply -f metallb-native.yaml
+# 配置 IPAddressPool + L2Advertisement 后，MetalLB 自动分配 IP
 # ============================================================
 
 ---
