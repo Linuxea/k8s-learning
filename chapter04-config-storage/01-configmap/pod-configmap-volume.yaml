@@ -9,24 +9,22 @@ spec:
     - name: nginx
       image: nginx:1.27
       volumeMounts:
-        # 把 ConfigMap 挂载到 nginx 的配置目录
+        # 目录挂载（不用 subPath）：ConfigMap 的所有键变成目录下的文件
+        # 更新时 kubelet 通过符号链接原子替换 → 文件内容会自动变
+        # 但应用不一定感知：nginx 可能缓存了旧文件的 inode
+        # 注意：subPath 挂载的文件永远不更新（K8s 已知限制）
         - name: config-volume
-          mountPath: /etc/nginx/conf.d/default.conf
-          # subPath: 只挂载 ConfigMap 中的特定键，而不是把整个目录替换掉
-          # 如果不用 subPath，ConfigMap 挂载会覆盖目标目录下的所有内容
-          subPath: nginx.conf
-          readOnly: true   # 配置文件通常不需要写入
+          mountPath: /etc/nginx/conf.d
+          readOnly: true
 
   volumes:
     - name: config-volume
       configMap:
         name: app-config
-        # 可选：设置文件权限，默认是 0644
-        # defaultMode: 0644
-        # 可选：只挂载特定的键
-        # items:
-        #   - key: nginx.conf
-        #     path: default.conf
-        #     mode: 0644
+        # items 过滤只挂载指定键，其余键不暴露
+        items:
+          - key: nginx.conf
+            path: default.conf
+            mode: 0644
 
   restartPolicy: Never

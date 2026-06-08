@@ -184,6 +184,54 @@ immutable: true   # 设置后不可修改，只能删除重建
 | 生产环境用 `immutable: true` | 减少 apiserver 压力，提高集群稳定性 |
 | 配置变更流程自动化 | ConfigMap 更新 → 滚动重启 Pod（配合 Deployment） |
 
+## 常见困惑
+
+### 1. Volume 挂载时文件到底有没有热更新？
+
+**文件内容会变，但应用不一定感知。** kubelet 更新 ConfigMap 卷用的是**符号链接原子替换**机制：
+
+```
+# 第一次挂载
+/etc/config/
+  ..data → ..2026_06_08_13_25_00    ← 真实文件目录
+  nginx.conf → ..data/nginx.conf
+
+# ConfigMap 更新后
+/etc/config/
+  ..data → ..2026_06_08_13_28_30    ← 原子切换到新目录
+  nginx.conf → ..data/nginx.conf    ← 符号链接不变，但它指向的文件变了
+```
+
+关键细节：
+- kubelet 创建新的时间戳目录，写入新文件，然后原子更新 `..data` 符号链接
+- `cat /etc/config/nginx.conf` 会读到新内容（因为符号链接跟到了新目录）
+- 但如果应用已经 `open()` 了文件，它的文件描述符还指向**旧的 inode**，读的还是旧内容
+- 即使应用 `close()` 再重新 `open()`，也不一定触发（取决于应用的设计）
+
+这就是为什么 nginx 在 `cat` 确认文件变了之后，`nginx -s reload` 仍然返回旧值——可能 nginx 缓存了旧文件，或者 reload 处理 include 文件时有特殊行为。
+
+### 2. `subPath` 挂载的热更新问题
+
+`subPath` 挂载的单个文件**永远不会被更新**。这是 Kubernetes 的已知限制（[Issue #50345](https://github.com/kubernetes/kubernetes/issues/50345)）。
+
+```
+# subPath 挂载：文件直接 bind mount 进去
+subPath: nginx.conf
+mountPath: /etc/nginx/conf.d/default.conf
+→ 更新 ConfigMap 后，文件内容不变 ← 永不更新
+
+# 目录挂载：通过符号链接原子替换
+mountPath: /etc/nginx/conf.d
+→ 更新 ConfigMap 后，文件内容会变 ← 有热更新
+```
+
+### 3. 生产环境的正确做法
+
+不要依赖 kubelet 的符号链接同步来做热更新。标准做法：
+1. ConfigMap 更新 → 2. Deployment 滚动重启 Pod → 3. 新 Pod 读新配置
+
+配合 Deployment 的 `spec.strategy.rollingUpdate` 可以做到零停机。
+
 ## 思考题
 
 1. 如果 ConfigMap 中某个键被删除了，正在使用该键作为环境变量的 Pod 会怎样？（试试看）
