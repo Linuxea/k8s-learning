@@ -246,6 +246,32 @@ kubectl delete pv local-pv --ignore-not-found=true
 
 这些问题催生了 **StorageClass** 和 **动态供给**——下一节会讲。
 
+## 常见困惑
+
+### 1. 为什么 Pod 不能直接引用 PV，非要通过 PVC？
+
+两个原因：
+
+- **安全性/隔离** — PV 是集群级别资源（无 namespace），Pod 有 namespace。如果 Pod 能直接绑 PV，A namespace 的 Pod 会抢 B namespace 的 PV，隔离形同虚设。PVC 是 namespace 级别的，每个 namespace 只能用自己的 PVC。
+- **K8s 语法不支持** — Pod 的 `volumes` 没有 `persistentVolume` 字段，只有 `persistentVolumeClaim`。这是故意设计的。
+
+```
+Pod → PVC (namespace级别，稳定接口) → PV (集群级别，存储细节)
+```
+
+### 2. 删除顺序有讲究
+
+必须按这个顺序：**Pod → PVC → PV**。反过来先删 PVC，PV 会变成 `Released` 状态，数据还在但需要手动清理才能复用。
+
+### 3. kind 踩坑：nodeAffinity 节点名
+
+kind 集群的节点名是 `k8s-learn-worker`（不是 `k8s-learning-worker`）。local PV 的 nodeAffinity 必须匹配实际节点名，否则 Pod 调度失败：`0/3 nodes are available: volume node affinity conflict`。
+
+```bash
+# 正确的值
+kubectl get nodes --show-labels | grep hostname
+```
+
 ## 思考题
 
 1. 如果 PVC 请求的 accessMode 是 `ReadWriteMany`，但集群中没有支持 RWX 的 PV，会发生什么？

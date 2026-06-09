@@ -46,5 +46,5 @@ spec:
               operator: In
               values:
                 # 替换为你的 worker 节点名称
-                # 用 kubectl get nodes --show-labels 查看
-                - k8s-learning-worker
+                # 用 kubectl get nodes --show-labels 查看（kind 里是 k8s-learn-worker）
+                - k8s-learn-worker
