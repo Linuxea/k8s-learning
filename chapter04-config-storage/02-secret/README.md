@@ -201,6 +201,41 @@ kubectl delete -f pod-secret-volume.yaml
 
 简单原则：**如果泄露会造成安全风险，就用 Secret。**
 
+## 常见困惑
+
+### 1. Secret 和 ConfigMap 到底是什么关系？
+
+结构和用法完全一样，区别只在一个地方：ConfigMap 的值是明文，Secret 的值是 base64 编码。除此以外，消费方式（env/volume）、更新行为（subPath 限制/符号链接）、大小限制（1MiB）全部相同。
+
+```yaml
+# ConfigMap                            # Secret
+valueFrom:                             valueFrom:
+  configMapKeyRef:                       secretKeyRef:
+    name: app-config                       name: db-secret
+    key: LOG_LEVEL                         key: username
+```
+
+```yaml
+# ConfigMap volume                     # Secret volume
+volumes:                               volumes:
+  - configMap:                           - secret:
+      name: app-config                       secretName: db-secret
+```
+
+> 换句话说：Secret 就是在 ConfigMap 外面包了一层 base64，外加 RBAC 权限控制的语义。底层的 etcd 存储/热更新/符号链接机制完全一样。
+
+### 2. `kubectl describe secret` 不显示值
+
+这是有意设计——防止明文密码在终端滚动中出现。解码需要显式用 jsonpath：
+
+```bash
+kubectl get secret db-secret -o jsonpath='{.data.password}' | base64 -d
+```
+
+### 3. Secret 在容器里已经自动解码了
+
+环境变量 / Volume 挂载后，应用读到的是明文，不需要手动 base64 -d。保护的是存储和传输过程，不是运行时。
+
 ## 思考题
 
 1. 如果 Secret 被删除了，正在使用该 Secret 的 Pod 会怎样？Volume 挂载方式的环境变量方式的行为是否相同？
