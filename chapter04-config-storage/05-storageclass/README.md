@@ -295,6 +295,42 @@ StorageClass → 持久化存储的自动管理
     └── 动态供给 → StorageClass + PVC
 ```
 
+## 常见困惑
+
+### 1. "存储"到底存在哪里？
+
+所有抽象最终都落在一个节点目录上。以 local-path provisioner 为例：
+
+```
+Pod 写 /usr/share/nginx/html
+  → PVC: auto-pvc
+    → PV: pvc-7d63a...（自动创建）
+      → StorageClass: standard（配方）
+        → provisioner 自动在节点上建目录
+          → /var/local-path-provisioner/pvc-7d63a..._default_auto-pvc
+```
+
+跟上一节手动 `mkdir /tmp/k8s-pv-data` 做的事一模一样，只是自动化了。
+
+### 2. 数据能跨节点吗？
+
+**local 类型不能。** local/hostPath 存储的数据只在一个节点上，Pod 必须调度到那个节点。跨节点需要网络存储（NFS、云 NAS 等）。
+
+| 存储类型 | 跨节点 | 例子 |
+|---------|--------|------|
+| local / hostPath | ❌ | 本地磁盘 |
+| NFS | ✅ | 网络文件系统 |
+| 云盘（EBS） | ❌ | 单节点挂载 |
+| 云 NAS（EFS） | ✅ | 多节点共享 |
+
+### 3. 一个人玩 kind 感觉不出 StorageClass 的好处
+
+是的。100 个团队需要 500 个存储时才有感觉——管理员不可能手动建 500 个 PV。StorageClass 的价值是：**管理员配一次配方，开发者只管写 PVC。**
+
+### 4. WaitForFirstConsumer 的作用
+
+PVC 创建后 `Pending`，有 Pod 用了才触发 provisioner 创建 PV。好处：Pod 调度到哪个节点，PV 就在哪个节点创建，避免"PV 在 A 节点，Pod 在 B 节点"。
+
 ## 思考题
 
 1. 如果一个 PVC 的 `storageClassName` 设为空字符串（`""`），它的行为和不指定 `storageClassName` 有什么不同？

@@ -50,7 +50,7 @@
 | 02 | Secret | ✅ 已完成 | 2026-06-08 |
 | 03 | Volume (emptyDir) | ✅ 已讲解(未apply) | 2026-06-08 |
 | 04 | PV / PVC | ✅ 已完成 | 2026-06-08 |
-| 05 | StorageClass | ⬜ 未开始 | |
+| 05 | StorageClass | ✅ 已完成 | 2026-06-08 |
 
 ## Chapter 05 - 调度
 | 小节 | 内容 | 状态 | 完成日期 |
