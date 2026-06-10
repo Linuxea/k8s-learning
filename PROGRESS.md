@@ -55,7 +55,7 @@
 ## Chapter 05 - 调度
 | 小节 | 内容 | 状态 | 完成日期 |
 |------|------|------|---------|
-| 01 | nodeSelector | ⬜ 未开始 | |
+| 01 | nodeSelector | ✅ 已完成 | 2026-06-10 |
 | 02 | Node Affinity | ⬜ 未开始 | |
 | 03 | Taints & Tolerations | ⬜ 未开始 | |
 | 04 | Pod 拓扑分布 | ⬜ 未开始 | |

@@ -157,6 +157,14 @@ kubectl label nodes k8s-learning-worker2 disk-
 3. 如果给一个已经运行的 Pod 所在节点删除了匹配的标签，Pod 会被驱逐吗？为什么？
 4. 在什么场景下，简单的 nodeSelector 就足够了，不需要更复杂的亲和性？
 
+## 常见困惑
+
+1. **"节点标签删了，Pod 会不会被驱逐？"** — 不会。nodeSelector 只在调度阶段生效，Pod 一旦绑定到节点，标签变化不影响已运行的 Pod。调度器不会持续监控标签变化来驱逐 Pod。
+
+2. **"control-plane 是不是标签机制？"** — 不是。control-plane 是节点角色（通过 `node-role.kubernetes.io/control-plane` 标签标识），和 nodeSelector 是两个概念。nodeSelector 用的是自定义标签。
+
+3. **"`--show-labels` 输出太长看不清"** — 可以用 `kubectl get nodes -L disk` 只显示特定标签列，更简洁。
+
 ---
 
 **[下一节：节点亲和性 →](../02-node-affinity/README.md)**
